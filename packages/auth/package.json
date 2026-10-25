@@ -1,0 +1,57 @@
+{
+  "name": "@knight-os/auth",
+  "private": true,
+  "type": "module",
+  "description": "Authentication package for Knight OS",
+  "imports": {
+    "#auth": "./src/auth.ts",
+    "#data-access/*": "./src/data-access/*.ts",
+    "#db": "./src/db/index.ts",
+    "#db/*": "./src/db/*.ts",
+    "#permissions": "./src/permissions/index.ts",
+    "#permissions/*": "./src/permissions/*.ts",
+    "#services/*": "./src/services/*.ts",
+    "#utils": "./src/utils/index.ts"
+  },
+  "exports": {
+    ".": "./src/auth.ts",
+    "./client": "./src/client/index.ts",
+    "./data-access": "./src/data-access/index.ts",
+    "./db": "./src/db/index.ts",
+    "./db/schema": "./src/db/schema.ts",
+    "./permissions": "./src/permissions/index.ts",
+    "./services": "./src/services/index.ts",
+    "./sqlite": "./src/sqlite.ts",
+    "./system-user": "./src/system-user.ts",
+    "./use-cases": "./src/use-cases/index.ts",
+    "./utils": "./src/utils/index.ts",
+    "./validation": "./src/validation.ts"
+  },
+  "scripts": {
+    "auth:schema": "BETTER_AUTH_URL=${BETTER_AUTH_URL:-http://localhost:3000} pnpm dlx auth@latest generate --config ./src/auth.ts --output ./src/db/better-auth.schema.ts --yes",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio --port 5556",
+    "make-admin": "tsx --env-file-if-exists=../../.env src/scripts/make-admin.ts",
+    "lint": "eslint . --quiet",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "better-auth": "catalog:",
+    "better-sqlite3": "catalog:",
+    "drizzle-orm": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native": "catalog:",
+    "drizzle-kit": "catalog:",
+    "eslint": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "typescript-eslint": "catalog:",
+    "vitest": "catalog:"
+  }
+}

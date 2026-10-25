@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Build output
+dist/
+build/
+coverage/
+.cache/
+.turbo/
+.vite/
+.vitest/
+.vinxi/
+
+# TypeScript
+*.tsbuildinfo
+
+# Local database and runtime files
+*.pid
+*.pid.lock
+*.seed
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+.omc
+.omx
+.claude/worktrees/
+
+# SQLite databases
+data/*.db
+data/*.db-*

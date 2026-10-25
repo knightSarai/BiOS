@@ -1,0 +1,16 @@
+{
+  "name": "knight-os",
+  "private": true,
+  "description": "Knight OS monorepo",
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter @knight-os/web dev",
+    "build": "pnpm --filter @knight-os/web build",
+    "db:generate": "pnpm --filter @knight-os/auth --filter @knight-os/server db:generate",
+    "db:migrate": "pnpm --filter @knight-os/auth --filter @knight-os/server db:migrate",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "packageManager": "pnpm@12.15.0+sha512.b3951d6d6ff4a9f13dc7cf56cd28d2b8eb37dbcc9c68e52e1e1191873ea9f82a017287ab50baadc5ccc494f036c67c0e47eb13608c2fa36f47711b61ea128e61"
+}

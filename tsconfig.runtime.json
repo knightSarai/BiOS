@@ -1,0 +1,8 @@
+// Loaded via TSX_TSCONFIG_PATH by every tsx invocation (Dockerfile ENV + pnpm scripts).
+// tsx applies compilerOptions only to files inside `include`, and only from ONE tsconfig
+// per process (privatenumber/tsx#696) — this file spans all packages so cross-package
+// .tsx compiles with the automatic JSX runtime.
+{
+  "compilerOptions": { "jsx": "react-jsx" },
+  "include": ["packages/**/*", "apps/**/*"]
+}

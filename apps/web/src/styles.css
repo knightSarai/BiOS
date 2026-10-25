@@ -3,6 +3,8 @@
 @import "@fontsource-variable/inter";
 @import "@fontsource-variable/jetbrains-mono";
 @import "shadcn/tailwind.css";
+@import "prosemirror-view/style/prosemirror.css";
+@import "prosemirror-gapcursor/style/gapcursor.css";
 
 @custom-variant dark (&:is(.dark *));
 

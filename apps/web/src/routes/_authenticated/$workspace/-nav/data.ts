@@ -1,9 +1,12 @@
-import { CalendarDays } from "lucide-react"
+import { CalendarDays, FileText } from "lucide-react"
 import type { NavSection } from "@layout/nav-types"
 
 const nav: NavSection[] = [
   {
-    links: [{ icon: CalendarDays, label: "Today", route: "/today" }],
+    links: [
+      { icon: CalendarDays, label: "Today", route: "/today" },
+      { icon: FileText, label: "Documents", route: "/documents" },
+    ],
   },
 ]
 

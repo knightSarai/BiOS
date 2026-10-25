@@ -1,0 +1,56 @@
+{
+  "name": "@knight-os/server",
+  "private": true,
+  "type": "module",
+  "description": "Server-side package for Knight OS",
+  "imports": {
+    "#core": "./src/core/index.ts",
+    "#core/*": "./src/core/*.ts",
+    "#data-access": "./src/data-access/index.ts",
+    "#data-access/*": "./src/data-access/*.ts",
+    "#db": "./src/db/index.ts",
+    "#db/*": "./src/db/*.ts",
+    "#services": "./src/services/index.ts",
+    "#services/*": "./src/services/*.ts",
+    "#trpc/*": "./src/trpc/*.ts",
+    "#use-cases": "./src/use-cases/index.ts",
+    "#use-cases/*": "./src/use-cases/*.ts"
+  },
+  "exports": {
+    "./core": "./src/core/index.ts",
+    "./data-access": "./src/data-access/index.ts",
+    "./db": "./src/db/index.ts",
+    "./db/schema": "./src/db/schema.ts",
+    "./services": "./src/services/index.ts",
+    "./trpc": "./src/trpc/index.ts",
+    "./use-cases": "./src/use-cases/index.ts"
+  },
+  "scripts": {
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio --port 5555",
+    "lint": "eslint . --quiet",
+    "test": "LOG_DISABLED=true vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native": "catalog:",
+    "drizzle-kit": "catalog:",
+    "eslint": "catalog:",
+    "typescript": "catalog:",
+    "typescript-eslint": "catalog:",
+    "vitest": "catalog:"
+  },
+  "dependencies": {
+    "@knight-os/auth": "workspace:*",
+    "@trpc/server": "catalog:",
+    "dayjs": "catalog:",
+    "drizzle-orm": "catalog:",
+    "pino": "catalog:",
+    "pino-pretty": "catalog:",
+    "superjson": "catalog:",
+    "zod": "catalog:"
+  }
+}

@@ -37,6 +37,19 @@ const seedDocument = (ydoc: Y.Doc) => {
   }
 }
 
+const seedDocumentWithTitle = (ydoc: Y.Doc, title: string) => {
+  seedDocument(ydoc)
+  const titleElement = ydoc.getXmlFragment(DOCUMENT_FRAGMENT).get(0)
+  if (!(titleElement instanceof Y.XmlElement) || titleElement.length > 0) return
+  if (title) titleElement.insert(0, [new Y.XmlText(title)])
+}
+
 const titleOf = (doc: Node) => doc.firstChild?.textContent.trim() ?? ""
 
-export { DOCUMENT_FRAGMENT, emptyDocument, seedDocument, titleOf }
+export {
+  DOCUMENT_FRAGMENT,
+  emptyDocument,
+  seedDocument,
+  seedDocumentWithTitle,
+  titleOf,
+}

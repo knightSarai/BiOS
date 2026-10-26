@@ -3,6 +3,7 @@ import { Toolbar } from "@base-ui/react/toolbar"
 import { useAtom, useAtomValue } from "jotai"
 import {
   Bold,
+  CircleDashed,
   ChevronDown,
   Code,
   Italic,
@@ -12,6 +13,8 @@ import {
 import type { MarkType } from "prosemirror-model"
 import { TextSelection, type EditorState } from "prosemirror-state"
 import type { EditorView } from "prosemirror-view"
+import type { ActivityBridge } from "../activity-bridge"
+import { activityTargets, createActivitiesCommand } from "../activity-commands"
 import { blockCatalog } from "../block-catalog"
 import {
   activeBlockKind,
@@ -77,9 +80,10 @@ const formatButtons: {
 
 type SelectionToolbarProps = {
   atoms: EditorAtoms
+  activities: ActivityBridge
 }
 
-function SelectionToolbar({ atoms }: SelectionToolbarProps) {
+function SelectionToolbar({ atoms, activities }: SelectionToolbarProps) {
   const snapshot = useAtomValue(atoms.snapshot)
   const [linkDraft, setLinkDraft] = useAtom(atoms.linkDraft)
   const [menuOpen, setMenuOpen] = useAtom(atoms.menuOpen)
@@ -95,6 +99,11 @@ function SelectionToolbar({ atoms }: SelectionToolbarProps) {
   if (!open) return null
 
   const active = activeBlockKind(state)
+  const convertibleCount = activityTargets(state).length
+  const activityLabel =
+    convertibleCount > 1
+      ? `Create ${convertibleCount} activities`
+      : "Create activity"
   const ActiveIcon = active ? blockIcons[active] : blockIcons.paragraph
   const activeLabel =
     blockCatalog.find((item) => item.kind === active)?.label ?? "Text"
@@ -173,6 +182,22 @@ function SelectionToolbar({ atoms }: SelectionToolbarProps) {
                   onClick={() => setLinkDraft(activeLinkHref(view.state) ?? "")}
                 >
                   <Link />
+                </Toolbar.Button>
+                <Toolbar.Separator className="mx-0.5 h-4 w-px bg-border" />
+                <Toolbar.Button
+                  aria-label={activityLabel}
+                  title={`${activityLabel} (${shortcutKeys("Mod-Shift-o").join(" ")})`}
+                  disabled={convertibleCount === 0}
+                  className={toolbarButtonClassName}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() =>
+                    createActivitiesCommand(activities.create)(
+                      view.state,
+                      view.dispatch
+                    )
+                  }
+                >
+                  <CircleDashed />
                 </Toolbar.Button>
               </Toolbar.Root>
             )}

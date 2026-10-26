@@ -3,6 +3,7 @@ import { useMediaQuery } from "@base-ui/react/unstable-use-media-query"
 import { useStore } from "jotai"
 import { toast } from "sonner"
 import type * as Y from "yjs"
+import type { ActivityBridge } from "../activity-bridge"
 import { activeLinkHref, isInTitle } from "../commands"
 import { readUi, setHoverPos } from "../editor-ui"
 import { mountEditor } from "../mount-editor"
@@ -18,6 +19,7 @@ type DocumentEditorProps = {
   blockLink: (blockId: string) => string
   onContentChange: (title: string) => void
   onLoaded: (title: string) => void
+  activities: ActivityBridge
 }
 
 function DocumentEditor({
@@ -26,6 +28,7 @@ function DocumentEditor({
   blockLink,
   onContentChange,
   onLoaded,
+  activities,
 }: DocumentEditorProps) {
   const store = useStore()
   const slashMenuId = useId()
@@ -43,6 +46,7 @@ function DocumentEditor({
         slashMenuId,
         onContentChange,
         onLoaded,
+        activities,
         onError: (message) => toast.error(message),
         onState: (snapshot) => store.set(atoms.snapshot, snapshot),
         onRequestLink: () => {
@@ -54,7 +58,16 @@ function DocumentEditor({
         },
       })
     },
-    [ydoc, focusBlockId, slashMenuId, onContentChange, onLoaded, store, atoms]
+    [
+      ydoc,
+      focusBlockId,
+      slashMenuId,
+      onContentChange,
+      onLoaded,
+      activities,
+      store,
+      atoms,
+    ]
   )
 
   const clearHover = () => {
@@ -69,11 +82,15 @@ function DocumentEditor({
       <div ref={mountRef} />
       <SlashMenu atoms={atoms} menuId={slashMenuId} />
       {coarsePointer ? (
-        <MobileEditorBar atoms={atoms} blockLink={blockLink} />
+        <MobileEditorBar
+          atoms={atoms}
+          blockLink={blockLink}
+          activities={activities}
+        />
       ) : (
         <>
           <BlockHandle atoms={atoms} blockLink={blockLink} />
-          <SelectionToolbar atoms={atoms} />
+          <SelectionToolbar atoms={atoms} activities={activities} />
         </>
       )}
     </div>

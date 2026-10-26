@@ -9,7 +9,7 @@ const useCreateDocument = (workspaceId: string) => {
     mutationFn: () => documentsRepository(workspaceId).create(),
     onSuccess: () =>
       queryClient.invalidateQueries({
-        queryKey: documentKeys.list(workspaceId),
+        queryKey: documentKeys.all(workspaceId),
       }),
   })
 }
@@ -23,7 +23,7 @@ const useSaveDocumentTitle = (workspaceId: string, id: string) => {
       documentsRepository(workspaceId).saveTitle(id, title),
     onSuccess: () =>
       queryClient.invalidateQueries({
-        queryKey: documentKeys.list(workspaceId),
+        queryKey: documentKeys.all(workspaceId),
       }),
   })
 }
@@ -37,7 +37,7 @@ const useSyncDocumentTitle = (workspaceId: string, id: string) => {
       documentsRepository(workspaceId).syncTitle(id, title),
     onSuccess: () =>
       queryClient.invalidateQueries({
-        queryKey: documentKeys.list(workspaceId),
+        queryKey: documentKeys.all(workspaceId),
       }),
   })
 }

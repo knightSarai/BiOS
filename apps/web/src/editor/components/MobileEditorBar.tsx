@@ -3,6 +3,7 @@ import { Toolbar } from "@base-ui/react/toolbar"
 import { useAtom, useAtomValue } from "jotai"
 import {
   Bold,
+  CircleDashed,
   Ellipsis,
   Italic,
   KeyboardOff,
@@ -21,6 +22,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
+import type { ActivityBridge } from "../activity-bridge"
+import { activityTargets, createActivitiesCommand } from "../activity-commands"
 import {
   activeBlockKind,
   activeLinkHref,
@@ -66,9 +69,14 @@ const keepFocus = (event: React.MouseEvent) => event.preventDefault()
 type MobileEditorBarProps = {
   atoms: EditorAtoms
   blockLink: (blockId: string) => string
+  activities: ActivityBridge
 }
 
-function MobileEditorBar({ atoms, blockLink }: MobileEditorBarProps) {
+function MobileEditorBar({
+  atoms,
+  blockLink,
+  activities,
+}: MobileEditorBarProps) {
   const snapshot = useAtomValue(atoms.snapshot)
   const [linkDraft, setLinkDraft] = useAtom(atoms.linkDraft)
   const [menuOpen, setMenuOpen] = useAtom(atoms.menuOpen)
@@ -181,6 +189,20 @@ function MobileEditorBar({ atoms, blockLink }: MobileEditorBarProps) {
             onClick={() => setLinkDraft(linkHref ?? "")}
           >
             <Link />
+          </Toolbar.Button>
+          <Toolbar.Button
+            aria-label="Create activity"
+            disabled={activityTargets(state).length === 0}
+            className={barButtonClassName}
+            onMouseDown={keepFocus}
+            onClick={() =>
+              createActivitiesCommand(activities.create)(
+                view.state,
+                view.dispatch
+              )
+            }
+          >
+            <CircleDashed />
           </Toolbar.Button>
           <Toolbar.Separator className="mx-0.5 h-6 w-px shrink-0 bg-border" />
           <Toolbar.Button

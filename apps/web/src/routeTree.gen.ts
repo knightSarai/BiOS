@@ -28,6 +28,7 @@ import { Route as ApiAuthSplatRouteImport } from './routes/api/auth.$'
 import { Route as ApiTrpcSplatRouteImport } from './routes/api/trpc.$'
 import { Route as AuthenticatedWorkspaceAppIndexRouteImport } from './routes/_authenticated/$workspace/_app/index'
 import { Route as AuthenticatedWorkspaceAppSplatRouteImport } from './routes/_authenticated/$workspace/_app/$'
+import { Route as AuthenticatedWorkspaceAppActivitiesRouteRouteImport } from './routes/_authenticated/$workspace/_app/activities/route'
 import { Route as AuthenticatedWorkspaceAppDocumentsRouteRouteImport } from './routes/_authenticated/$workspace/_app/documents/route'
 import { Route as AuthenticatedWorkspaceAppTodayRouteImport } from './routes/_authenticated/$workspace/_app/today'
 import { Route as AuthenticatedWorkspaceSettingsIndexRouteImport } from './routes/_authenticated/$workspace/settings/index'
@@ -36,6 +37,8 @@ import { Route as AuthenticatedWorkspaceSettingsPreferencesRouteImport } from '.
 import { Route as AuthenticatedAdminUsersIndexRouteImport } from './routes/_authenticated/admin/users/index'
 import { Route as AuthenticatedAdminWorkspacesIndexRouteImport } from './routes/_authenticated/admin/workspaces/index'
 import { Route as AuthenticatedAdminWorkspacesNewRouteImport } from './routes/_authenticated/admin/workspaces/new'
+import { Route as AuthenticatedWorkspaceAppActivitiesIndexRouteImport } from './routes/_authenticated/$workspace/_app/activities/index'
+import { Route as AuthenticatedWorkspaceAppActivitiesActivityIdRouteImport } from './routes/_authenticated/$workspace/_app/activities/$activityId'
 import { Route as AuthenticatedWorkspaceAppDocumentsIndexRouteImport } from './routes/_authenticated/$workspace/_app/documents/index'
 import { Route as AuthenticatedWorkspaceAppDocumentsDocumentIdRouteImport } from './routes/_authenticated/$workspace/_app/documents/$documentId'
 
@@ -139,6 +142,12 @@ const AuthenticatedWorkspaceAppSplatRoute =
     path: '/$',
     getParentRoute: () => AuthenticatedWorkspaceAppRouteRoute,
   } as any)
+const AuthenticatedWorkspaceAppActivitiesRouteRoute =
+  AuthenticatedWorkspaceAppActivitiesRouteRouteImport.update({
+    id: '/activities',
+    path: '/activities',
+    getParentRoute: () => AuthenticatedWorkspaceAppRouteRoute,
+  } as any)
 const AuthenticatedWorkspaceAppDocumentsRouteRoute =
   AuthenticatedWorkspaceAppDocumentsRouteRouteImport.update({
     id: '/documents',
@@ -187,6 +196,18 @@ const AuthenticatedAdminWorkspacesNewRoute =
     path: '/new',
     getParentRoute: () => AuthenticatedAdminWorkspacesRouteRoute,
   } as any)
+const AuthenticatedWorkspaceAppActivitiesIndexRoute =
+  AuthenticatedWorkspaceAppActivitiesIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedWorkspaceAppActivitiesRouteRoute,
+  } as any)
+const AuthenticatedWorkspaceAppActivitiesActivityIdRoute =
+  AuthenticatedWorkspaceAppActivitiesActivityIdRouteImport.update({
+    id: '/$activityId',
+    path: '/$activityId',
+    getParentRoute: () => AuthenticatedWorkspaceAppActivitiesRouteRoute,
+  } as any)
 const AuthenticatedWorkspaceAppDocumentsIndexRoute =
   AuthenticatedWorkspaceAppDocumentsIndexRouteImport.update({
     id: '/',
@@ -216,6 +237,7 @@ export interface FileRoutesByFullPath {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/trpc/$': typeof ApiTrpcSplatRoute
   '/admin/': typeof AuthenticatedAdminIndexRoute
+  '/$workspace/activities': typeof AuthenticatedWorkspaceAppActivitiesRouteRouteWithChildren
   '/$workspace/documents': typeof AuthenticatedWorkspaceAppDocumentsRouteRouteWithChildren
   '/$workspace/$': typeof AuthenticatedWorkspaceAppSplatRoute
   '/$workspace/today': typeof AuthenticatedWorkspaceAppTodayRoute
@@ -226,7 +248,9 @@ export interface FileRoutesByFullPath {
   '/$workspace/settings/': typeof AuthenticatedWorkspaceSettingsIndexRoute
   '/admin/users/': typeof AuthenticatedAdminUsersIndexRoute
   '/admin/workspaces/': typeof AuthenticatedAdminWorkspacesIndexRoute
+  '/$workspace/activities/$activityId': typeof AuthenticatedWorkspaceAppActivitiesActivityIdRoute
   '/$workspace/documents/$documentId': typeof AuthenticatedWorkspaceAppDocumentsDocumentIdRoute
+  '/$workspace/activities/': typeof AuthenticatedWorkspaceAppActivitiesIndexRoute
   '/$workspace/documents/': typeof AuthenticatedWorkspaceAppDocumentsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -250,7 +274,9 @@ export interface FileRoutesByTo {
   '/$workspace/settings': typeof AuthenticatedWorkspaceSettingsIndexRoute
   '/admin/users': typeof AuthenticatedAdminUsersIndexRoute
   '/admin/workspaces': typeof AuthenticatedAdminWorkspacesIndexRoute
+  '/$workspace/activities/$activityId': typeof AuthenticatedWorkspaceAppActivitiesActivityIdRoute
   '/$workspace/documents/$documentId': typeof AuthenticatedWorkspaceAppDocumentsDocumentIdRoute
+  '/$workspace/activities': typeof AuthenticatedWorkspaceAppActivitiesIndexRoute
   '/$workspace/documents': typeof AuthenticatedWorkspaceAppDocumentsIndexRoute
 }
 export interface FileRoutesById {
@@ -272,6 +298,7 @@ export interface FileRoutesById {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/trpc/$': typeof ApiTrpcSplatRoute
   '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
+  '/_authenticated/$workspace/_app/activities': typeof AuthenticatedWorkspaceAppActivitiesRouteRouteWithChildren
   '/_authenticated/$workspace/_app/documents': typeof AuthenticatedWorkspaceAppDocumentsRouteRouteWithChildren
   '/_authenticated/$workspace/_app/$': typeof AuthenticatedWorkspaceAppSplatRoute
   '/_authenticated/$workspace/_app/today': typeof AuthenticatedWorkspaceAppTodayRoute
@@ -282,7 +309,9 @@ export interface FileRoutesById {
   '/_authenticated/$workspace/settings/': typeof AuthenticatedWorkspaceSettingsIndexRoute
   '/_authenticated/admin/users/': typeof AuthenticatedAdminUsersIndexRoute
   '/_authenticated/admin/workspaces/': typeof AuthenticatedAdminWorkspacesIndexRoute
+  '/_authenticated/$workspace/_app/activities/$activityId': typeof AuthenticatedWorkspaceAppActivitiesActivityIdRoute
   '/_authenticated/$workspace/_app/documents/$documentId': typeof AuthenticatedWorkspaceAppDocumentsDocumentIdRoute
+  '/_authenticated/$workspace/_app/activities/': typeof AuthenticatedWorkspaceAppActivitiesIndexRoute
   '/_authenticated/$workspace/_app/documents/': typeof AuthenticatedWorkspaceAppDocumentsIndexRoute
 }
 export interface FileRouteTypes {
@@ -303,6 +332,7 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/trpc/$'
     | '/admin/'
+    | '/$workspace/activities'
     | '/$workspace/documents'
     | '/$workspace/$'
     | '/$workspace/today'
@@ -313,7 +343,9 @@ export interface FileRouteTypes {
     | '/$workspace/settings/'
     | '/admin/users/'
     | '/admin/workspaces/'
+    | '/$workspace/activities/$activityId'
     | '/$workspace/documents/$documentId'
+    | '/$workspace/activities/'
     | '/$workspace/documents/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -337,7 +369,9 @@ export interface FileRouteTypes {
     | '/$workspace/settings'
     | '/admin/users'
     | '/admin/workspaces'
+    | '/$workspace/activities/$activityId'
     | '/$workspace/documents/$documentId'
+    | '/$workspace/activities'
     | '/$workspace/documents'
   id:
     | '__root__'
@@ -358,6 +392,7 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/trpc/$'
     | '/_authenticated/admin/'
+    | '/_authenticated/$workspace/_app/activities'
     | '/_authenticated/$workspace/_app/documents'
     | '/_authenticated/$workspace/_app/$'
     | '/_authenticated/$workspace/_app/today'
@@ -368,7 +403,9 @@ export interface FileRouteTypes {
     | '/_authenticated/$workspace/settings/'
     | '/_authenticated/admin/users/'
     | '/_authenticated/admin/workspaces/'
+    | '/_authenticated/$workspace/_app/activities/$activityId'
     | '/_authenticated/$workspace/_app/documents/$documentId'
+    | '/_authenticated/$workspace/_app/activities/'
     | '/_authenticated/$workspace/_app/documents/'
   fileRoutesById: FileRoutesById
 }
@@ -519,6 +556,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedWorkspaceAppSplatRouteImport
       parentRoute: typeof AuthenticatedWorkspaceAppRouteRoute
     }
+    '/_authenticated/$workspace/_app/activities': {
+      id: '/_authenticated/$workspace/_app/activities'
+      path: '/activities'
+      fullPath: '/$workspace/activities'
+      preLoaderRoute: typeof AuthenticatedWorkspaceAppActivitiesRouteRouteImport
+      parentRoute: typeof AuthenticatedWorkspaceAppRouteRoute
+    }
     '/_authenticated/$workspace/_app/documents': {
       id: '/_authenticated/$workspace/_app/documents'
       path: '/documents'
@@ -575,6 +619,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminWorkspacesNewRouteImport
       parentRoute: typeof AuthenticatedAdminWorkspacesRouteRoute
     }
+    '/_authenticated/$workspace/_app/activities/': {
+      id: '/_authenticated/$workspace/_app/activities/'
+      path: '/'
+      fullPath: '/$workspace/activities/'
+      preLoaderRoute: typeof AuthenticatedWorkspaceAppActivitiesIndexRouteImport
+      parentRoute: typeof AuthenticatedWorkspaceAppActivitiesRouteRoute
+    }
+    '/_authenticated/$workspace/_app/activities/$activityId': {
+      id: '/_authenticated/$workspace/_app/activities/$activityId'
+      path: '/$activityId'
+      fullPath: '/$workspace/activities/$activityId'
+      preLoaderRoute: typeof AuthenticatedWorkspaceAppActivitiesActivityIdRouteImport
+      parentRoute: typeof AuthenticatedWorkspaceAppActivitiesRouteRoute
+    }
     '/_authenticated/$workspace/_app/documents/': {
       id: '/_authenticated/$workspace/_app/documents/'
       path: '/'
@@ -591,6 +649,24 @@ declare module '@tanstack/react-router' {
     }
   }
 }
+
+interface AuthenticatedWorkspaceAppActivitiesRouteRouteChildren {
+  AuthenticatedWorkspaceAppActivitiesActivityIdRoute: typeof AuthenticatedWorkspaceAppActivitiesActivityIdRoute
+  AuthenticatedWorkspaceAppActivitiesIndexRoute: typeof AuthenticatedWorkspaceAppActivitiesIndexRoute
+}
+
+const AuthenticatedWorkspaceAppActivitiesRouteRouteChildren: AuthenticatedWorkspaceAppActivitiesRouteRouteChildren =
+  {
+    AuthenticatedWorkspaceAppActivitiesActivityIdRoute:
+      AuthenticatedWorkspaceAppActivitiesActivityIdRoute,
+    AuthenticatedWorkspaceAppActivitiesIndexRoute:
+      AuthenticatedWorkspaceAppActivitiesIndexRoute,
+  }
+
+const AuthenticatedWorkspaceAppActivitiesRouteRouteWithChildren =
+  AuthenticatedWorkspaceAppActivitiesRouteRoute._addFileChildren(
+    AuthenticatedWorkspaceAppActivitiesRouteRouteChildren,
+  )
 
 interface AuthenticatedWorkspaceAppDocumentsRouteRouteChildren {
   AuthenticatedWorkspaceAppDocumentsDocumentIdRoute: typeof AuthenticatedWorkspaceAppDocumentsDocumentIdRoute
@@ -611,6 +687,7 @@ const AuthenticatedWorkspaceAppDocumentsRouteRouteWithChildren =
   )
 
 interface AuthenticatedWorkspaceAppRouteRouteChildren {
+  AuthenticatedWorkspaceAppActivitiesRouteRoute: typeof AuthenticatedWorkspaceAppActivitiesRouteRouteWithChildren
   AuthenticatedWorkspaceAppDocumentsRouteRoute: typeof AuthenticatedWorkspaceAppDocumentsRouteRouteWithChildren
   AuthenticatedWorkspaceAppSplatRoute: typeof AuthenticatedWorkspaceAppSplatRoute
   AuthenticatedWorkspaceAppTodayRoute: typeof AuthenticatedWorkspaceAppTodayRoute
@@ -619,6 +696,8 @@ interface AuthenticatedWorkspaceAppRouteRouteChildren {
 
 const AuthenticatedWorkspaceAppRouteRouteChildren: AuthenticatedWorkspaceAppRouteRouteChildren =
   {
+    AuthenticatedWorkspaceAppActivitiesRouteRoute:
+      AuthenticatedWorkspaceAppActivitiesRouteRouteWithChildren,
     AuthenticatedWorkspaceAppDocumentsRouteRoute:
       AuthenticatedWorkspaceAppDocumentsRouteRouteWithChildren,
     AuthenticatedWorkspaceAppSplatRoute: AuthenticatedWorkspaceAppSplatRoute,

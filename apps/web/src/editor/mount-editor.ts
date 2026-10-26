@@ -1,17 +1,30 @@
 import { dropCursor } from "prosemirror-dropcursor"
 import { gapCursor } from "prosemirror-gapcursor"
 import { keymap } from "prosemirror-keymap"
-import { EditorState, TextSelection } from "prosemirror-state"
+import { EditorState, TextSelection, type Transaction } from "prosemirror-state"
 import { EditorView } from "prosemirror-view"
 import { DexieYProvider } from "y-dexie"
-import { initProseMirrorDoc, ySyncPlugin, yUndoPlugin } from "y-prosemirror"
+import {
+  initProseMirrorDoc,
+  ySyncPlugin,
+  ySyncPluginKey,
+  yUndoPlugin,
+  yUndoPluginKey,
+} from "y-prosemirror"
 import type * as Y from "yjs"
 import { blockIdsPlugin } from "./block-ids"
 import { DOCUMENT_FRAGMENT, seedDocument, titleOf } from "./document-content"
 import { editorUiPlugin, readUi, setFlashPos, slashItems } from "./editor-ui"
 import { editorInputRules } from "./input-rules"
 import { editorBaseKeymap, editorKeymap } from "./keymap"
-import { nodeViews } from "./node-views"
+import type { ActivityBridge } from "./activity-bridge"
+import {
+  ACTIVITY_CREATION_META,
+  createActivitiesCommand,
+  onSelectedActivity,
+} from "./activity-commands"
+import { trackActivityUndo } from "./activity-undo"
+import { createNodeViews } from "./node-views"
 import { schema } from "./schema"
 
 const CONTENT_SAVE_DELAY_MS = 500
@@ -30,6 +43,7 @@ type MountEditorOptions = {
   focusBlockId?: string
   slashMenuId: string
   onRequestLink: () => void
+  activities: ActivityBridge
   onError: (message: string) => void
   onState: (snapshot: { view: EditorView; state: EditorState } | null) => void
   onContentChange: (title: string) => void
@@ -78,8 +92,15 @@ const scrollToBlock = (view: EditorView, blockId: string) => {
   return true
 }
 
+const isUndoOrRedo = (tr: Transaction) => {
+  const meta = tr.getMeta(ySyncPluginKey) as
+    { isUndoRedoOperation?: boolean } | undefined
+  return meta?.isUndoRedoOperation === true
+}
+
 const mountEditor = (options: MountEditorOptions) => {
   let view: EditorView | null = null
+  let stopUndoTracking = () => {}
   let disposed = false
   let pendingTitle: string | null = null
   let saveTimer: ReturnType<typeof setTimeout> | undefined
@@ -112,34 +133,53 @@ const mountEditor = (options: MountEditorOptions) => {
     const fragment = options.ydoc.getXmlFragment(DOCUMENT_FRAGMENT)
     const { doc, mapping } = initProseMirrorDoc(fragment, schema)
 
+    const state = EditorState.create({
+      schema,
+      doc,
+      plugins: [
+        editorUiPlugin,
+        keymap({
+          "Mod-k": () => {
+            options.onRequestLink()
+            return true
+          },
+          "Mod-Shift-o": createActivitiesCommand(options.activities.create),
+          Enter: onSelectedActivity(options.activities.open),
+          "Mod-Enter": onSelectedActivity(options.activities.toggleDone),
+        }),
+        editorInputRules,
+        editorKeymap,
+        editorBaseKeymap,
+        ySyncPlugin(fragment, { mapping }),
+        yUndoPlugin(),
+        dropCursor({ color: "var(--color-accent-text)", width: 2 }),
+        gapCursor(),
+        blockIdsPlugin,
+      ],
+    })
+    const undoManager = yUndoPluginKey.getState(state)?.undoManager
+    const undoTracking = undoManager ? trackActivityUndo(undoManager) : null
+    stopUndoTracking = () => undoTracking?.destroy()
+
     const editor: EditorView = new EditorView(options.element, {
-      state: EditorState.create({
-        schema,
-        doc,
-        plugins: [
-          editorUiPlugin,
-          keymap({
-            "Mod-k": () => {
-              options.onRequestLink()
-              return true
-            },
-          }),
-          editorInputRules,
-          editorKeymap,
-          editorBaseKeymap,
-          ySyncPlugin(fragment, { mapping }),
-          yUndoPlugin(),
-          dropCursor({ color: "var(--color-accent-text)", width: 2 }),
-          gapCursor(),
-          blockIdsPlugin,
-        ],
-      }),
-      nodeViews,
+      state,
+      nodeViews: createNodeViews(options.activities),
       attributes: (state) => editorAttributes(state, options.slashMenuId),
       dispatchTransaction(tr) {
         if (disposed) return
+        const createdIds = tr.getMeta(ACTIVITY_CREATION_META) as
+          string[] | undefined
+        if (createdIds) undoTracking?.startCreation()
         const next = editor.state.apply(tr)
         editor.updateState(next)
+        if (createdIds) undoTracking?.finishCreation(createdIds)
+        const reversed =
+          tr.docChanged && isUndoOrRedo(tr) ? undoTracking?.reversed() : null
+        if (reversed?.direction === "undo") {
+          options.activities.discard(reversed.activityIds)
+        } else if (reversed?.direction === "redo") {
+          options.activities.restore(reversed.activityIds)
+        }
         options.onState({ view: editor, state: next })
         if (tr.docChanged) scheduleContentSave(titleOf(next.doc))
       },
@@ -171,6 +211,7 @@ const mountEditor = (options: MountEditorOptions) => {
     browserWindow?.removeEventListener("pagehide", onPageHide)
     provider.off("error", onSaveError)
     view?.destroy()
+    stopUndoTracking()
     options.onState(null)
     DexieYProvider.release(options.ydoc)
   }

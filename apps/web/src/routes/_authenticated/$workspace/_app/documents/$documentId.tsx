@@ -5,6 +5,7 @@ import {
   useLocation,
   useRouter,
 } from "@tanstack/react-router"
+import { useActivityBridge } from "@/activities/use-activity-bridge"
 import { NotFound } from "@/components/common/NotFound"
 import { DocumentEditor } from "@/editor/components/DocumentEditor"
 import {
@@ -21,10 +22,12 @@ export const Route = createFileRoute(
 )({
   staticData: { crumb: { label: "Document" } },
   loader: async ({ context, params }) => {
-    const document = await context.queryClient.ensureQueryData(
-      documentQuery(context.workspace.id, params.documentId)
-    )
-    if (!document) throw notFound()
+    const query = documentQuery(context.workspace.id, params.documentId)
+    const document = await context.queryClient.ensureQueryData(query)
+    if (!document) {
+      context.queryClient.removeQueries({ queryKey: query.queryKey })
+      throw notFound()
+    }
   },
   component: DocumentPage,
   notFoundComponent: DocumentNotFound,
@@ -40,6 +43,10 @@ function DocumentPage() {
   )
   const saveTitle = useSaveDocumentTitle(workspace.id, documentId)
   const syncTitle = useSyncDocumentTitle(workspace.id, documentId)
+  const activities = useActivityBridge(workspace, {
+    kind: "document",
+    documentId,
+  })
   if (!document) return <DocumentNotFound />
 
   const blockLink = (blockId: string) => {
@@ -66,6 +73,7 @@ function DocumentPage() {
             blockLink={blockLink}
             onContentChange={saveTitle.mutate}
             onLoaded={syncTitle.mutate}
+            activities={activities}
           />
         </div>
       </Page.ScrollArea>

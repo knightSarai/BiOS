@@ -1,5 +1,7 @@
 import type { Node } from "prosemirror-model"
 import type { EditorView, NodeView, ViewMutationRecord } from "prosemirror-view"
+import { createStatusIconElement } from "@/activities/status-icon-element"
+import type { ActivityBridge, ActivityChipSummary } from "./activity-bridge"
 import { toggleCollapsibleAt, toggleTaskAt } from "./commands"
 
 const svgNamespace = "http://www.w3.org/2000/svg"
@@ -158,11 +160,118 @@ class CollapsibleView implements NodeView {
   }
 }
 
-const nodeViews = {
+class ActivityChipView implements NodeView {
+  dom: HTMLSpanElement
+  private status: HTMLButtonElement
+  private key: HTMLSpanElement
+  private title: HTMLSpanElement
+  private unsubscribe: () => void
+
+  constructor(
+    private node: Node,
+    private readonly bridge: ActivityBridge
+  ) {
+    this.dom = document.createElement("span")
+    this.dom.contentEditable = "false"
+    this.dom.dataset.activityId = this.activityId
+    this.dom.className =
+      "mx-px inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-md border border-border bg-muted/40 px-1.5 align-bottom leading-6 transition-colors hover:bg-muted max-md:leading-7"
+
+    this.status = document.createElement("button")
+    this.status.type = "button"
+    this.status.className =
+      "-ml-0.5 flex size-5 shrink-0 items-center justify-center rounded-sm hover:bg-background/60 max-md:size-7"
+    this.status.addEventListener("mousedown", (event) => event.preventDefault())
+    this.status.addEventListener("click", (event) => {
+      event.stopPropagation()
+      this.bridge.toggleDone(this.activityId)
+    })
+
+    this.key = document.createElement("span")
+    this.key.className = "shrink-0 text-xs text-muted-foreground tabular-nums"
+
+    this.title = document.createElement("span")
+    this.title.className = "min-w-0 truncate"
+
+    this.dom.append(this.status, this.key, this.title)
+    this.dom.addEventListener("click", () => this.bridge.open(this.activityId))
+    this.unsubscribe = this.subscribe()
+  }
+
+  private get activityId() {
+    return this.node.attrs.activityId as string
+  }
+
+  private subscribe() {
+    return this.bridge.observe(this.activityId, (summary) =>
+      this.render(summary)
+    )
+  }
+
+  private render(summary: ActivityChipSummary | null | undefined) {
+    if (!summary) {
+      this.status.replaceChildren()
+      this.status.disabled = true
+      this.key.textContent = ""
+      this.title.textContent =
+        summary === null ? "Deleted activity" : "Loading activity…"
+      this.title.classList.add("text-muted-foreground")
+      this.dom.removeAttribute("title")
+      return
+    }
+    const closed = summary.status === "done" || summary.status === "canceled"
+    this.status.disabled = false
+    this.status.replaceChildren(createStatusIconElement(summary.status))
+    this.status.setAttribute(
+      "aria-label",
+      summary.status === "done"
+        ? `Reopen ${summary.key}`
+        : `Mark ${summary.key} as done`
+    )
+    this.key.textContent = summary.key
+    this.title.textContent = summary.title || "Untitled"
+    this.title.classList.toggle(
+      "text-muted-foreground",
+      closed || !summary.title
+    )
+    this.title.classList.toggle("line-through", summary.status === "canceled")
+    this.dom.title = `Open ${summary.key} (Enter when selected)`
+  }
+
+  update(node: Node) {
+    if (node.type !== this.node.type) return false
+    const changed = node.attrs.activityId !== this.node.attrs.activityId
+    this.node = node
+    if (changed) {
+      this.unsubscribe()
+      this.dom.dataset.activityId = this.activityId
+      this.unsubscribe = this.subscribe()
+    }
+    return true
+  }
+
+  stopEvent(event: Event) {
+    return event.type === "click" || event.type === "mousedown"
+      ? event.target instanceof globalThis.Node &&
+          this.status.contains(event.target)
+      : false
+  }
+
+  ignoreMutation() {
+    return true
+  }
+
+  destroy() {
+    this.unsubscribe()
+  }
+}
+
+const createNodeViews = (bridge: ActivityBridge) => ({
   task_item: (node: Node, view: EditorView, getPos: GetPos) =>
     new TaskItemView(node, view, getPos),
   collapsible: (node: Node, view: EditorView, getPos: GetPos) =>
     new CollapsibleView(node, view, getPos),
-}
+  activity: (node: Node) => new ActivityChipView(node, bridge),
+})
 
-export { nodeViews }
+export { createNodeViews }

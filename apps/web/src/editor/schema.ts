@@ -220,6 +220,30 @@ const schema = new Schema({
       ],
     },
     text: { group: "inline" },
+    activity: {
+      group: "inline",
+      inline: true,
+      atom: true,
+      selectable: true,
+      attrs: { activityId: {} },
+      leafText: () => "",
+      parseDOM: [
+        {
+          tag: "span[data-activity-id]",
+          getAttrs: (dom: HTMLElement | string) => {
+            const activityId =
+              typeof dom === "string"
+                ? null
+                : dom.getAttribute("data-activity-id")
+            return activityId ? { activityId } : false
+          },
+        },
+      ],
+      toDOM: (node) => [
+        "span",
+        { "data-activity-id": node.attrs.activityId as string },
+      ],
+    },
     hard_break: {
       inline: true,
       group: "inline",

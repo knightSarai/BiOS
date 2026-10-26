@@ -17,6 +17,7 @@ import type { NavSection } from "@layout/nav-types"
 type SidebarProps = {
   menu: React.ReactNode
   nav: NavSection[]
+  sections?: (onNavigate?: () => void) => React.ReactNode
   footer?: React.ReactNode
 }
 
@@ -61,13 +62,15 @@ function NavLinks({
 function SidebarContent({
   menu,
   nav,
+  sections,
   footer,
   onNavigate,
 }: SidebarProps & { onNavigate?: () => void }) {
   return (
-    <div className="flex h-full flex-col gap-0.5 px-2.5 py-3">
+    <div className="flex h-full flex-col gap-0.5 overflow-y-auto px-2.5 py-3">
       {menu}
       <NavLinks nav={nav} onNavigate={onNavigate} />
+      {sections?.(onNavigate)}
       <div className="min-h-6 flex-1" />
       {footer}
     </div>
@@ -143,13 +146,25 @@ function MobileNavButton() {
   )
 }
 
-function AppShell({ menu, nav, footer, header, children }: AppShellProps) {
+function AppShell({
+  menu,
+  nav,
+  sections,
+  footer,
+  header,
+  children,
+}: AppShellProps) {
   const [mobileOpen, setMobileOpen] = useAtom(mobileMenuOpenAtom)
 
   return (
     <div className="flex h-svh bg-sidebar text-[13px] text-foreground">
       <nav aria-label="Main" className="hidden w-[220px] shrink-0 md:block">
-        <SidebarContent menu={menu} nav={nav} footer={footer} />
+        <SidebarContent
+          menu={menu}
+          nav={nav}
+          sections={sections}
+          footer={footer}
+        />
       </nav>
 
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
@@ -161,6 +176,7 @@ function AppShell({ menu, nav, footer, header, children }: AppShellProps) {
           <SidebarContent
             menu={menu}
             nav={nav}
+            sections={sections}
             footer={footer}
             onNavigate={() => setMobileOpen(false)}
           />
@@ -183,4 +199,4 @@ function AppShell({ menu, nav, footer, header, children }: AppShellProps) {
   )
 }
 
-export { AppShell, MobileNavButton }
+export { AppShell, MobileNavButton, navRowClassName }

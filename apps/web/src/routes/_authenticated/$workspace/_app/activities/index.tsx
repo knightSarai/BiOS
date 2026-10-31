@@ -12,6 +12,7 @@ import { ActivityList } from "./-components/ActivityList"
 export const Route = createFileRoute(
   "/_authenticated/$workspace/_app/activities/"
 )({
+  staticData: { crumb: { label: "Activities", icon: CircleDashed } },
   validateSearch: z.object({ area: z.string().optional() }),
   loaderDeps: ({ search }) => ({ area: search.area }),
   loader: ({ context, deps }) =>

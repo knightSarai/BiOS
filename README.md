@@ -49,10 +49,10 @@ pnpm db:migrate
 pnpm dev
 ```
 
-Open http://localhost:3000 and create an account. Make yourself an app admin, then create workspaces at `/admin/workspaces`:
+Open http://localhost:3000 and create an account (e.g. `admin@example.com` / `password123`). Make yourself an app admin, then create workspaces at `/admin/workspaces`:
 
 ```bash
-pnpm --filter @knight-os/auth make-admin you@example.com
+pnpm --filter @knight-os/auth make-admin admin@example.com
 ```
 
 Password reset emails are printed to the server log.

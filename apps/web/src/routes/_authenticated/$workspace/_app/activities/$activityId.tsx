@@ -5,7 +5,6 @@ import {
   useLocation,
   useRouter,
 } from "@tanstack/react-router"
-import { activityKey } from "@/activities/areas"
 import { useActivityBridge } from "@/activities/use-activity-bridge"
 import { NotFound } from "@/components/common/NotFound"
 import { DocumentEditor } from "@/editor/components/DocumentEditor"
@@ -20,14 +19,14 @@ import {
 } from "@/local-db/activity-queries"
 import { Page } from "@layout/content/Page"
 import { ActivityProperties } from "./-components/ActivityProperties"
-import { DeleteActivityButton } from "./-components/DeleteActivityButton"
+import { ActivityCrumb } from "./-components/ActivityCrumb"
 
 const BLOCK_HASH_PREFIX = "block-"
 
 export const Route = createFileRoute(
   "/_authenticated/$workspace/_app/activities/$activityId"
 )({
-  staticData: { crumb: { label: "Activity" } },
+  staticData: { crumb: { label: "Activity", Title: ActivityCrumb } },
   loader: async ({ context, params }) => {
     const query = activityQuery(context.workspace.id, params.activityId)
     const [found] = await Promise.all([
@@ -61,7 +60,7 @@ function ActivityPage() {
     activityId,
   })
   if (!found) return <ActivityNotFound />
-  const { activity, area } = found
+  const { activity } = found
 
   const blockLink = (blockId: string) => {
     const { href } = router.buildLocation({
@@ -77,9 +76,6 @@ function ActivityPage() {
       <Page.ScrollArea>
         <div className="mx-auto flex w-full max-w-5xl gap-10 px-4 pt-8 max-lg:flex-col max-lg:gap-6 md:px-16 md:pt-14">
           <div className="min-w-0 flex-1 max-lg:order-2">
-            <p className="mb-1 text-xs text-muted-foreground tabular-nums">
-              {activityKey(area?.key ?? "?", activity.number)}
-            </p>
             <DocumentEditor
               key={activityId}
               ydoc={activity.content}
@@ -98,22 +94,15 @@ function ActivityPage() {
             aria-label="Activity properties"
             className="w-64 shrink-0 max-lg:order-1 max-lg:w-full lg:sticky lg:top-14 lg:self-start"
           >
-            <div className="flex flex-col gap-4">
-              <ActivityProperties
-                activity={activity}
-                workspace={{
-                  id: workspace.id,
-                  name: workspace.name,
-                  slug: workspace.slug,
-                  timezone: workspace.settings.timezone,
-                }}
-              />
-              <DeleteActivityButton
-                activityId={activityId}
-                activityKey={activityKey(area?.key ?? "?", activity.number)}
-                workspace={{ id: workspace.id, slug: workspace.slug }}
-              />
-            </div>
+            <ActivityProperties
+              activity={activity}
+              workspace={{
+                id: workspace.id,
+                name: workspace.name,
+                slug: workspace.slug,
+                timezone: workspace.settings.timezone,
+              }}
+            />
           </aside>
         </div>
       </Page.ScrollArea>

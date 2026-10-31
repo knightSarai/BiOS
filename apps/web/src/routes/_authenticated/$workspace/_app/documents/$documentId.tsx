@@ -14,13 +14,14 @@ import {
 } from "@/local-db/document-mutations"
 import { documentQuery } from "@/local-db/document-queries"
 import { Page } from "@layout/content/Page"
+import { DocumentCrumb } from "./-components/DocumentCrumb"
 
 const BLOCK_HASH_PREFIX = "block-"
 
 export const Route = createFileRoute(
   "/_authenticated/$workspace/_app/documents/$documentId"
 )({
-  staticData: { crumb: { label: "Document" } },
+  staticData: { crumb: { label: "Document", Title: DocumentCrumb } },
   loader: async ({ context, params }) => {
     const query = documentQuery(context.workspace.id, params.documentId)
     const document = await context.queryClient.ensureQueryData(query)

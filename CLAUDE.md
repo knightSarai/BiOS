@@ -40,9 +40,8 @@ Purpose: These rules define my personal coding style and architectural preferenc
 - Don't write route files manually if the framework auto-generates routing code from file creation.
 - Use pnpm to add UI components from component libraries — don't write them yourself.
 
-## Team Workflow
+## Workflow
 
-- No self-merge. Every PR merges through review + green checks — humans and agents alike.
 - Agents never push without the operator's explicit per-request instruction; permission is single-use.
 - Agents never commit until the operator has reviewed the diff.
 - Never weaken CI to make something pass (skip tests, lower thresholds, gate checks behind conditions) — hard stop, ask first.

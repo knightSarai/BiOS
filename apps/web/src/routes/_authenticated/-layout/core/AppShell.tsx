@@ -108,7 +108,9 @@ function Breadcrumb() {
                 className="size-3 shrink-0 text-muted-foreground"
               />
             ) : null}
-            {isLast ? (
+            {isLast && crumb.Title ? (
+              <crumb.Title />
+            ) : isLast ? (
               <span
                 aria-current="page"
                 className="flex min-h-7 items-center gap-[7px] rounded-md px-1.5 whitespace-nowrap text-foreground max-md:min-h-11"

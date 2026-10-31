@@ -1,3 +1,4 @@
+import type { ComponentType } from "react"
 import type { LucideIcon } from "lucide-react"
 
 declare module "@tanstack/react-router" {
@@ -5,6 +6,7 @@ declare module "@tanstack/react-router" {
     crumb?: {
       label: string
       icon?: LucideIcon
+      Title?: ComponentType
     }
   }
 }

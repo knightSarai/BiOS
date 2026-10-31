@@ -1,8 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { Link } from "@tanstack/react-router"
 import type { ColumnDef } from "@tanstack/react-table"
 import {
   Users,
   MoreHorizontal,
+  Plus,
   ShieldCheck,
   ShieldOff,
   UserCog,
@@ -10,7 +12,7 @@ import {
 import { useTRPC } from "@/trpc/react"
 import { Page } from "@layout/content/Page"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -211,13 +213,17 @@ export default function UsersList() {
         <Page.HeaderContent>
           <Page.Title>Users</Page.Title>
         </Page.HeaderContent>
-        {!isError && !isLoading ? (
-          <Page.HeaderActions>
+        <Page.HeaderActions>
+          {!isError && !isLoading ? (
             <p className="text-sm text-muted-foreground">
               {data?.total ?? 0} total
             </p>
-          </Page.HeaderActions>
-        ) : null}
+          ) : null}
+          <Link to="/admin/users/new" className={buttonVariants({ size: "lg" })}>
+            <Plus />
+            Create user
+          </Link>
+        </Page.HeaderActions>
       </Page.Header>
       <Page.Body>
         <Page.ScrollArea>
@@ -232,7 +238,7 @@ export default function UsersList() {
                 <EmptyState.Text>
                   <EmptyState.Title>No users yet</EmptyState.Title>
                   <EmptyState.Description>
-                    Users appear here once they sign up.
+                    Create a user to give someone access.
                   </EmptyState.Description>
                 </EmptyState.Text>
               </EmptyState.Root>

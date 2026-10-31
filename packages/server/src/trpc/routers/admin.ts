@@ -3,10 +3,18 @@ import {
   isWorkspaceSlugTaken,
   listWorkspacesWithOwners,
 } from "@knight-os/auth/data-access"
-import { banUser, setUserRole, unbanUser } from "@knight-os/auth/services"
+import {
+  banUser,
+  createUser,
+  setUserRole,
+  unbanUser,
+} from "@knight-os/auth/services"
 import { listUsersWithWorkspaces } from "@knight-os/auth/use-cases"
 import { isValidWorkspaceSlug, toSlug } from "@knight-os/auth/utils"
-import { createWorkspaceSchema } from "@knight-os/auth/validation"
+import {
+  createUserSchema,
+  createWorkspaceSchema,
+} from "@knight-os/auth/validation"
 import { timezoneSchema } from "#core/schemas"
 import { createWorkspace } from "#use-cases/workspaces"
 import { createTRPCRouter } from "#trpc/init"
@@ -39,6 +47,10 @@ const usersRouter = createTRPCRouter({
         ctx.headers
       )
     ),
+
+  create: adminProcedure
+    .input(createUserSchema)
+    .mutation(async ({ input, ctx }) => createUser(input, ctx.headers)),
 
   ban: adminProcedure
     .input(z.object({ userId: z.string().min(1) }))

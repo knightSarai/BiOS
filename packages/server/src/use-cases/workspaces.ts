@@ -19,7 +19,7 @@ export class WorkspaceSlugTakenError extends ConflictError {
 
 export class WorkspaceOwnerNotFoundError extends NotFoundError {
   constructor(email: string) {
-    super(`No user with the email ${email}. They need to sign up first.`)
+    super(`No user with the email ${email}. Create their account first.`)
   }
 }
 

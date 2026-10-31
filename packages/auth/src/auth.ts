@@ -28,6 +28,7 @@ export const buildAuthOptions = (database: DB) =>
     }),
     emailAndPassword: {
       enabled: true,
+      disableSignUp: true,
       sendResetPassword: async ({ user, url }) => {
         await sendEmail(passwordResetEmail({ to: user.email, url }))
       },

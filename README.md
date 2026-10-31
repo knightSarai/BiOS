@@ -49,11 +49,13 @@ pnpm db:migrate
 pnpm dev
 ```
 
-Open http://localhost:3000 and create an account (e.g. `admin@example.com` / `password123`). Make yourself an app admin, then create workspaces at `/admin/workspaces`:
+There is no public sign-up. Create the first app admin from the terminal; it asks for a password (e.g. `password123`):
 
 ```bash
-pnpm --filter @knight-os/auth make-admin admin@example.com
+pnpm --filter @knight-os/auth make-admin admin@example.com Admin
 ```
+
+Open http://localhost:3000 and sign in as `admin@example.com`. Create everyone else at `/admin/users` and their workspaces at `/admin/workspaces`. Passing only an email makes an existing user an app admin.
 
 Password reset emails are printed to the server log.
 

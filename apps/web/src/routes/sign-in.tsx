@@ -128,17 +128,6 @@ function SignIn() {
           </form.AppForm>
         </FieldGroup>
       </Form>
-
-      <div className="mt-6 text-center text-xs text-muted-foreground">
-        New here?{" "}
-        <Link
-          to="/sign-up"
-          search={returnTo ? { returnTo } : {}}
-          className="font-medium text-primary hover:underline"
-        >
-          Create an account
-        </Link>
-      </div>
     </AuthShell>
   )
 }

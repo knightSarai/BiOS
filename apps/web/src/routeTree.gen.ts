@@ -14,7 +14,6 @@ import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SignInRouteImport } from './routes/sign-in'
-import { Route as SignUpRouteImport } from './routes/sign-up'
 import { Route as AuthenticatedWorkspaceRouteRouteImport } from './routes/_authenticated/$workspace/route'
 import { Route as AuthenticatedAdminRouteRouteImport } from './routes/_authenticated/admin/route'
 import { Route as AuthenticatedNoWorkspaceRouteImport } from './routes/_authenticated/no-workspace'
@@ -23,6 +22,7 @@ import { Route as AuthenticatedWorkspaceAppRouteRouteImport } from './routes/_au
 import { Route as AuthenticatedWorkspaceSettingsRouteRouteImport } from './routes/_authenticated/$workspace/settings/route'
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin/index'
 import { Route as AuthenticatedAdminSplatRouteImport } from './routes/_authenticated/admin/$'
+import { Route as AuthenticatedAdminUsersRouteRouteImport } from './routes/_authenticated/admin/users/route'
 import { Route as AuthenticatedAdminWorkspacesRouteRouteImport } from './routes/_authenticated/admin/workspaces/route'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth.$'
 import { Route as ApiTrpcSplatRouteImport } from './routes/api/trpc.$'
@@ -35,6 +35,7 @@ import { Route as AuthenticatedWorkspaceSettingsIndexRouteImport } from './route
 import { Route as AuthenticatedWorkspaceSettingsGeneralRouteImport } from './routes/_authenticated/$workspace/settings/general'
 import { Route as AuthenticatedWorkspaceSettingsPreferencesRouteImport } from './routes/_authenticated/$workspace/settings/preferences'
 import { Route as AuthenticatedAdminUsersIndexRouteImport } from './routes/_authenticated/admin/users/index'
+import { Route as AuthenticatedAdminUsersNewRouteImport } from './routes/_authenticated/admin/users/new'
 import { Route as AuthenticatedAdminWorkspacesIndexRouteImport } from './routes/_authenticated/admin/workspaces/index'
 import { Route as AuthenticatedAdminWorkspacesNewRouteImport } from './routes/_authenticated/admin/workspaces/new'
 import { Route as AuthenticatedWorkspaceAppActivitiesIndexRouteImport } from './routes/_authenticated/$workspace/_app/activities/index'
@@ -64,11 +65,6 @@ const ResetPasswordRoute = ResetPasswordRouteImport.update({
 const SignInRoute = SignInRouteImport.update({
   id: '/sign-in',
   path: '/sign-in',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SignUpRoute = SignUpRouteImport.update({
-  id: '/sign-up',
-  path: '/sign-up',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedWorkspaceRouteRoute =
@@ -114,6 +110,12 @@ const AuthenticatedAdminSplatRoute = AuthenticatedAdminSplatRouteImport.update({
   path: '/$',
   getParentRoute: () => AuthenticatedAdminRouteRoute,
 } as any)
+const AuthenticatedAdminUsersRouteRoute =
+  AuthenticatedAdminUsersRouteRouteImport.update({
+    id: '/users',
+    path: '/users',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
 const AuthenticatedAdminWorkspacesRouteRoute =
   AuthenticatedAdminWorkspacesRouteRouteImport.update({
     id: '/workspaces',
@@ -180,9 +182,15 @@ const AuthenticatedWorkspaceSettingsPreferencesRoute =
   } as any)
 const AuthenticatedAdminUsersIndexRoute =
   AuthenticatedAdminUsersIndexRouteImport.update({
-    id: '/users/',
-    path: '/users/',
-    getParentRoute: () => AuthenticatedAdminRouteRoute,
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedAdminUsersRouteRoute,
+  } as any)
+const AuthenticatedAdminUsersNewRoute =
+  AuthenticatedAdminUsersNewRouteImport.update({
+    id: '/new',
+    path: '/new',
+    getParentRoute: () => AuthenticatedAdminUsersRouteRoute,
   } as any)
 const AuthenticatedAdminWorkspacesIndexRoute =
   AuthenticatedAdminWorkspacesIndexRouteImport.update({
@@ -226,12 +234,12 @@ export interface FileRoutesByFullPath {
   '/forgot-password': typeof ForgotPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sign-in': typeof SignInRoute
-  '/sign-up': typeof SignUpRoute
   '/$workspace': typeof AuthenticatedWorkspaceRouteRouteWithChildren
   '/admin': typeof AuthenticatedAdminRouteRouteWithChildren
   '/no-workspace': typeof AuthenticatedNoWorkspaceRoute
   '/api/health': typeof ApiHealthRoute
   '/$workspace/settings': typeof AuthenticatedWorkspaceSettingsRouteRouteWithChildren
+  '/admin/users': typeof AuthenticatedAdminUsersRouteRouteWithChildren
   '/admin/workspaces': typeof AuthenticatedAdminWorkspacesRouteRouteWithChildren
   '/admin/$': typeof AuthenticatedAdminSplatRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -243,6 +251,7 @@ export interface FileRoutesByFullPath {
   '/$workspace/today': typeof AuthenticatedWorkspaceAppTodayRoute
   '/$workspace/settings/general': typeof AuthenticatedWorkspaceSettingsGeneralRoute
   '/$workspace/settings/preferences': typeof AuthenticatedWorkspaceSettingsPreferencesRoute
+  '/admin/users/new': typeof AuthenticatedAdminUsersNewRoute
   '/admin/workspaces/new': typeof AuthenticatedAdminWorkspacesNewRoute
   '/$workspace/': typeof AuthenticatedWorkspaceAppIndexRoute
   '/$workspace/settings/': typeof AuthenticatedWorkspaceSettingsIndexRoute
@@ -258,7 +267,6 @@ export interface FileRoutesByTo {
   '/forgot-password': typeof ForgotPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sign-in': typeof SignInRoute
-  '/sign-up': typeof SignUpRoute
   '/$workspace': typeof AuthenticatedWorkspaceAppIndexRoute
   '/no-workspace': typeof AuthenticatedNoWorkspaceRoute
   '/api/health': typeof ApiHealthRoute
@@ -270,6 +278,7 @@ export interface FileRoutesByTo {
   '/$workspace/today': typeof AuthenticatedWorkspaceAppTodayRoute
   '/$workspace/settings/general': typeof AuthenticatedWorkspaceSettingsGeneralRoute
   '/$workspace/settings/preferences': typeof AuthenticatedWorkspaceSettingsPreferencesRoute
+  '/admin/users/new': typeof AuthenticatedAdminUsersNewRoute
   '/admin/workspaces/new': typeof AuthenticatedAdminWorkspacesNewRoute
   '/$workspace/settings': typeof AuthenticatedWorkspaceSettingsIndexRoute
   '/admin/users': typeof AuthenticatedAdminUsersIndexRoute
@@ -286,13 +295,13 @@ export interface FileRoutesById {
   '/forgot-password': typeof ForgotPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sign-in': typeof SignInRoute
-  '/sign-up': typeof SignUpRoute
   '/_authenticated/$workspace': typeof AuthenticatedWorkspaceRouteRouteWithChildren
   '/_authenticated/admin': typeof AuthenticatedAdminRouteRouteWithChildren
   '/_authenticated/no-workspace': typeof AuthenticatedNoWorkspaceRoute
   '/api/health': typeof ApiHealthRoute
   '/_authenticated/$workspace/_app': typeof AuthenticatedWorkspaceAppRouteRouteWithChildren
   '/_authenticated/$workspace/settings': typeof AuthenticatedWorkspaceSettingsRouteRouteWithChildren
+  '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRouteRouteWithChildren
   '/_authenticated/admin/workspaces': typeof AuthenticatedAdminWorkspacesRouteRouteWithChildren
   '/_authenticated/admin/$': typeof AuthenticatedAdminSplatRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -304,6 +313,7 @@ export interface FileRoutesById {
   '/_authenticated/$workspace/_app/today': typeof AuthenticatedWorkspaceAppTodayRoute
   '/_authenticated/$workspace/settings/general': typeof AuthenticatedWorkspaceSettingsGeneralRoute
   '/_authenticated/$workspace/settings/preferences': typeof AuthenticatedWorkspaceSettingsPreferencesRoute
+  '/_authenticated/admin/users/new': typeof AuthenticatedAdminUsersNewRoute
   '/_authenticated/admin/workspaces/new': typeof AuthenticatedAdminWorkspacesNewRoute
   '/_authenticated/$workspace/_app/': typeof AuthenticatedWorkspaceAppIndexRoute
   '/_authenticated/$workspace/settings/': typeof AuthenticatedWorkspaceSettingsIndexRoute
@@ -321,12 +331,12 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/reset-password'
     | '/sign-in'
-    | '/sign-up'
     | '/$workspace'
     | '/admin'
     | '/no-workspace'
     | '/api/health'
     | '/$workspace/settings'
+    | '/admin/users'
     | '/admin/workspaces'
     | '/admin/$'
     | '/api/auth/$'
@@ -338,6 +348,7 @@ export interface FileRouteTypes {
     | '/$workspace/today'
     | '/$workspace/settings/general'
     | '/$workspace/settings/preferences'
+    | '/admin/users/new'
     | '/admin/workspaces/new'
     | '/$workspace/'
     | '/$workspace/settings/'
@@ -353,7 +364,6 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/reset-password'
     | '/sign-in'
-    | '/sign-up'
     | '/$workspace'
     | '/no-workspace'
     | '/api/health'
@@ -365,6 +375,7 @@ export interface FileRouteTypes {
     | '/$workspace/today'
     | '/$workspace/settings/general'
     | '/$workspace/settings/preferences'
+    | '/admin/users/new'
     | '/admin/workspaces/new'
     | '/$workspace/settings'
     | '/admin/users'
@@ -380,13 +391,13 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/reset-password'
     | '/sign-in'
-    | '/sign-up'
     | '/_authenticated/$workspace'
     | '/_authenticated/admin'
     | '/_authenticated/no-workspace'
     | '/api/health'
     | '/_authenticated/$workspace/_app'
     | '/_authenticated/$workspace/settings'
+    | '/_authenticated/admin/users'
     | '/_authenticated/admin/workspaces'
     | '/_authenticated/admin/$'
     | '/api/auth/$'
@@ -398,6 +409,7 @@ export interface FileRouteTypes {
     | '/_authenticated/$workspace/_app/today'
     | '/_authenticated/$workspace/settings/general'
     | '/_authenticated/$workspace/settings/preferences'
+    | '/_authenticated/admin/users/new'
     | '/_authenticated/admin/workspaces/new'
     | '/_authenticated/$workspace/_app/'
     | '/_authenticated/$workspace/settings/'
@@ -415,7 +427,6 @@ export interface RootRouteChildren {
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignInRoute: typeof SignInRoute
-  SignUpRoute: typeof SignUpRoute
   ApiHealthRoute: typeof ApiHealthRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiTrpcSplatRoute: typeof ApiTrpcSplatRoute
@@ -456,13 +467,6 @@ declare module '@tanstack/react-router' {
       path: '/sign-in'
       fullPath: '/sign-in'
       preLoaderRoute: typeof SignInRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/sign-up': {
-      id: '/sign-up'
-      path: '/sign-up'
-      fullPath: '/sign-up'
-      preLoaderRoute: typeof SignUpRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/$workspace': {
@@ -519,6 +523,13 @@ declare module '@tanstack/react-router' {
       path: '/$'
       fullPath: '/admin/$'
       preLoaderRoute: typeof AuthenticatedAdminSplatRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/users': {
+      id: '/_authenticated/admin/users'
+      path: '/users'
+      fullPath: '/admin/users'
+      preLoaderRoute: typeof AuthenticatedAdminUsersRouteRouteImport
       parentRoute: typeof AuthenticatedAdminRouteRoute
     }
     '/_authenticated/admin/workspaces': {
@@ -600,10 +611,17 @@ declare module '@tanstack/react-router' {
     }
     '/_authenticated/admin/users/': {
       id: '/_authenticated/admin/users/'
-      path: '/users'
+      path: '/'
       fullPath: '/admin/users/'
       preLoaderRoute: typeof AuthenticatedAdminUsersIndexRouteImport
-      parentRoute: typeof AuthenticatedAdminRouteRoute
+      parentRoute: typeof AuthenticatedAdminUsersRouteRoute
+    }
+    '/_authenticated/admin/users/new': {
+      id: '/_authenticated/admin/users/new'
+      path: '/new'
+      fullPath: '/admin/users/new'
+      preLoaderRoute: typeof AuthenticatedAdminUsersNewRouteImport
+      parentRoute: typeof AuthenticatedAdminUsersRouteRoute
     }
     '/_authenticated/admin/workspaces/': {
       id: '/_authenticated/admin/workspaces/'
@@ -749,6 +767,22 @@ const AuthenticatedWorkspaceRouteRouteWithChildren =
     AuthenticatedWorkspaceRouteRouteChildren,
   )
 
+interface AuthenticatedAdminUsersRouteRouteChildren {
+  AuthenticatedAdminUsersNewRoute: typeof AuthenticatedAdminUsersNewRoute
+  AuthenticatedAdminUsersIndexRoute: typeof AuthenticatedAdminUsersIndexRoute
+}
+
+const AuthenticatedAdminUsersRouteRouteChildren: AuthenticatedAdminUsersRouteRouteChildren =
+  {
+    AuthenticatedAdminUsersNewRoute: AuthenticatedAdminUsersNewRoute,
+    AuthenticatedAdminUsersIndexRoute: AuthenticatedAdminUsersIndexRoute,
+  }
+
+const AuthenticatedAdminUsersRouteRouteWithChildren =
+  AuthenticatedAdminUsersRouteRoute._addFileChildren(
+    AuthenticatedAdminUsersRouteRouteChildren,
+  )
+
 interface AuthenticatedAdminWorkspacesRouteRouteChildren {
   AuthenticatedAdminWorkspacesNewRoute: typeof AuthenticatedAdminWorkspacesNewRoute
   AuthenticatedAdminWorkspacesIndexRoute: typeof AuthenticatedAdminWorkspacesIndexRoute
@@ -767,19 +801,20 @@ const AuthenticatedAdminWorkspacesRouteRouteWithChildren =
   )
 
 interface AuthenticatedAdminRouteRouteChildren {
+  AuthenticatedAdminUsersRouteRoute: typeof AuthenticatedAdminUsersRouteRouteWithChildren
   AuthenticatedAdminWorkspacesRouteRoute: typeof AuthenticatedAdminWorkspacesRouteRouteWithChildren
   AuthenticatedAdminSplatRoute: typeof AuthenticatedAdminSplatRoute
   AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
-  AuthenticatedAdminUsersIndexRoute: typeof AuthenticatedAdminUsersIndexRoute
 }
 
 const AuthenticatedAdminRouteRouteChildren: AuthenticatedAdminRouteRouteChildren =
   {
+    AuthenticatedAdminUsersRouteRoute:
+      AuthenticatedAdminUsersRouteRouteWithChildren,
     AuthenticatedAdminWorkspacesRouteRoute:
       AuthenticatedAdminWorkspacesRouteRouteWithChildren,
     AuthenticatedAdminSplatRoute: AuthenticatedAdminSplatRoute,
     AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
-    AuthenticatedAdminUsersIndexRoute: AuthenticatedAdminUsersIndexRoute,
   }
 
 const AuthenticatedAdminRouteRouteWithChildren =
@@ -810,7 +845,6 @@ const rootRouteChildren: RootRouteChildren = {
   ForgotPasswordRoute: ForgotPasswordRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignInRoute: SignInRoute,
-  SignUpRoute: SignUpRoute,
   ApiHealthRoute: ApiHealthRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiTrpcSplatRoute: ApiTrpcSplatRoute,

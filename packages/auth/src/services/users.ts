@@ -1,4 +1,6 @@
+import type { z } from "zod"
 import { auth } from "#auth"
+import type { createUserSchema } from "../validation"
 
 export const listAuthUsers = async (
   query: {
@@ -24,3 +26,8 @@ export const setUserRole = async (
   role: "admin" | "user",
   headers: Headers
 ) => await auth.api.setRole({ body: { userId, role }, headers })
+
+type CreateUserInput = z.infer<typeof createUserSchema>
+
+export const createUser = async (input: CreateUserInput, headers: Headers) =>
+  await auth.api.createUser({ body: input, headers })

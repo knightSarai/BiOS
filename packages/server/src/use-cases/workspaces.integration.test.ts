@@ -1,10 +1,8 @@
 import { describe, expect, it } from "vitest"
 import { auth } from "@knight-os/auth"
-import {
-  findUserById,
-  getWorkspaceMembership,
-} from "@knight-os/auth/data-access"
+import { getWorkspaceMembership } from "@knight-os/auth/data-access"
 import { db } from "#db"
+import { createTestUser, sessionHeaders } from "#db/test-users"
 import { makeRepos } from "#data-access/make-repos"
 import { createLogger } from "#services"
 import {
@@ -13,29 +11,11 @@ import {
   WorkspaceSlugTakenError,
 } from "#use-cases/workspaces"
 
-const PASSWORD = "correct-horse-battery-staple"
-
-const signUp = async (email: string) => {
-  const { user } = await auth.api.signUpEmail({
-    body: { name: email.split("@")[0], email, password: PASSWORD },
-  })
-  const row = await findUserById(user.id)
-  if (!row) throw new Error(`User ${email} was not stored`)
-  return row
-}
-
-const sessionHeaders = async (email: string) => {
-  const { headers } = await auth.api.signInEmail({
-    body: { email, password: PASSWORD },
-    returnHeaders: true,
-  })
-  const token = headers.get("set-cookie")?.split(";")[0]
-  if (!token) throw new Error(`No session cookie for ${email}`)
-  return new Headers({ cookie: token })
-}
-
 const adminContext = async () => {
-  const admin = await signUp(`admin-${crypto.randomUUID()}@example.test`)
+  const admin = await createTestUser(
+    `admin-${crypto.randomUUID()}@example.test`,
+    "admin"
+  )
   return {
     user: admin,
     db,
@@ -47,7 +27,7 @@ const adminContext = async () => {
 describe("createWorkspace", () => {
   it("creates the workspace with the named user as its owner", async () => {
     const ctx = await adminContext()
-    const owner = await signUp("owner@example.test")
+    const owner = await createTestUser("owner@example.test")
 
     const created = await createWorkspace(ctx, {
       name: "Knight Life",
@@ -86,7 +66,7 @@ describe("createWorkspace", () => {
 
   it("rejects an address that is already taken", async () => {
     const ctx = await adminContext()
-    const owner = await signUp("second-owner@example.test")
+    const owner = await createTestUser("second-owner@example.test")
     const input = {
       name: "Taken",
       slug: "taken",
@@ -103,7 +83,7 @@ describe("createWorkspace", () => {
 
 describe("better-auth workspace rules", () => {
   it("does not let a signed-in user create a workspace", async () => {
-    await signUp("self-serve@example.test")
+    await createTestUser("self-serve@example.test")
     const headers = await sessionHeaders("self-serve@example.test")
 
     await expect(
@@ -116,7 +96,7 @@ describe("better-auth workspace rules", () => {
 
   it("does not let an owner invite people", async () => {
     const ctx = await adminContext()
-    const owner = await signUp("inviter@example.test")
+    const owner = await createTestUser("inviter@example.test")
     const created = await createWorkspace(ctx, {
       name: "No Invites",
       slug: "no-invites",

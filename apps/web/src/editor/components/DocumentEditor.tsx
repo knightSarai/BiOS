@@ -1,4 +1,5 @@
 import { useCallback, useId, useMemo } from "react"
+import { createPortal } from "react-dom"
 import { useMediaQuery } from "@base-ui/react/unstable-use-media-query"
 import { useStore } from "jotai"
 import { toast } from "sonner"
@@ -20,6 +21,7 @@ type DocumentEditorProps = {
   onContentChange: (title: string) => void
   onLoaded: (title: string) => void
   activities: ActivityBridge
+  titleAccessory?: React.ReactNode
 }
 
 function DocumentEditor({
@@ -29,12 +31,19 @@ function DocumentEditor({
   onContentChange,
   onLoaded,
   activities,
+  titleAccessory,
 }: DocumentEditorProps) {
   const store = useStore()
   const slashMenuId = useId()
   const coarsePointer = useMediaQuery("(pointer: coarse)", { noSsr: true })
   // The atoms hold this editor's UI state, so each instance needs its own set.
   const atoms = useMemo(() => createEditorAtoms(), [])
+  const hasTitleAccessory = titleAccessory !== undefined
+  // ProseMirror keeps the widget only while it is handed the same DOM node.
+  const titleAccessoryElement = useMemo(
+    () => (hasTitleAccessory ? document.createElement("div") : null),
+    [hasTitleAccessory]
+  )
   // A new ref callback on every render would destroy and remount the editor.
   const mountRef = useCallback(
     (element: HTMLDivElement | null) => {
@@ -44,6 +53,7 @@ function DocumentEditor({
         ydoc,
         focusBlockId,
         slashMenuId,
+        titleAccessory: titleAccessoryElement,
         onContentChange,
         onLoaded,
         activities,
@@ -62,6 +72,7 @@ function DocumentEditor({
       ydoc,
       focusBlockId,
       slashMenuId,
+      titleAccessoryElement,
       onContentChange,
       onLoaded,
       activities,
@@ -80,6 +91,9 @@ function DocumentEditor({
   return (
     <div className="relative" onMouseLeave={clearHover}>
       <div ref={mountRef} />
+      {titleAccessoryElement
+        ? createPortal(titleAccessory, titleAccessoryElement)
+        : null}
       <SlashMenu atoms={atoms} menuId={slashMenuId} />
       {coarsePointer ? (
         <MobileEditorBar

@@ -26,6 +26,7 @@ import {
 import { trackActivityUndo } from "./activity-undo"
 import { createNodeViews } from "./node-views"
 import { schema } from "./schema"
+import { titleAccessoryPlugin } from "./title-accessory"
 
 const CONTENT_SAVE_DELAY_MS = 500
 const BLOCK_FLASH_MS = 1600
@@ -42,6 +43,7 @@ type MountEditorOptions = {
   ydoc: Y.Doc
   focusBlockId?: string
   slashMenuId: string
+  titleAccessory: HTMLElement | null
   onRequestLink: () => void
   activities: ActivityBridge
   onError: (message: string) => void
@@ -155,6 +157,9 @@ const mountEditor = (options: MountEditorOptions) => {
         dropCursor({ color: "var(--color-accent-text)", width: 2 }),
         gapCursor(),
         blockIdsPlugin,
+        ...(options.titleAccessory
+          ? [titleAccessoryPlugin(options.titleAccessory)]
+          : []),
       ],
     })
     const undoManager = yUndoPluginKey.getState(state)?.undoManager

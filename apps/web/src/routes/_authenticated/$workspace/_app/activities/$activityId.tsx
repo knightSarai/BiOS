@@ -18,7 +18,11 @@ import {
   areasQuery,
 } from "@/local-db/activity-queries"
 import { Page } from "@layout/content/Page"
-import { ActivityProperties } from "./-components/ActivityProperties"
+import {
+  ActivityOriginLink,
+  ActivityProperties,
+  ActivityPropertyChips,
+} from "./-components/ActivityProperties"
 import { ActivityCrumb } from "./-components/ActivityCrumb"
 
 const BLOCK_HASH_PREFIX = "block-"
@@ -61,6 +65,12 @@ function ActivityPage() {
   })
   if (!found) return <ActivityNotFound />
   const { activity } = found
+  const propertiesWorkspace = {
+    id: workspace.id,
+    name: workspace.name,
+    slug: workspace.slug,
+    timezone: workspace.settings.timezone,
+  }
 
   const blockLink = (blockId: string) => {
     const { href } = router.buildLocation({
@@ -74,8 +84,14 @@ function ActivityPage() {
   return (
     <Page.Layout>
       <Page.ScrollArea>
-        <div className="mx-auto flex w-full max-w-5xl gap-10 px-4 pt-8 max-lg:flex-col max-lg:gap-6 md:px-16 md:pt-14">
-          <div className="min-w-0 flex-1 max-lg:order-2">
+        <div className="mx-auto flex w-full max-w-5xl gap-10 px-4 pt-8 md:px-16 md:pt-14">
+          <div className="min-w-0 flex-1">
+            <div className="lg:hidden">
+              <ActivityOriginLink
+                activity={activity}
+                workspace={propertiesWorkspace}
+              />
+            </div>
             <DocumentEditor
               key={activityId}
               ydoc={activity.content}
@@ -88,20 +104,23 @@ function ActivityPage() {
               onContentChange={saveTitle.mutate}
               onLoaded={syncTitle.mutate}
               activities={activities}
+              titleAccessory={
+                <div className="lg:hidden">
+                  <ActivityPropertyChips
+                    activity={activity}
+                    workspace={propertiesWorkspace}
+                  />
+                </div>
+              }
             />
           </div>
           <aside
             aria-label="Activity properties"
-            className="w-64 shrink-0 max-lg:order-1 max-lg:w-full lg:sticky lg:top-14 lg:self-start"
+            className="w-64 shrink-0 max-lg:hidden lg:sticky lg:top-14 lg:self-start"
           >
             <ActivityProperties
               activity={activity}
-              workspace={{
-                id: workspace.id,
-                name: workspace.name,
-                slug: workspace.slug,
-                timezone: workspace.settings.timezone,
-              }}
+              workspace={propertiesWorkspace}
             />
           </aside>
         </div>

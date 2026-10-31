@@ -244,6 +244,41 @@ describe("diagram keyboard access", () => {
     expect($head.parentOffset).toBe("graph TD".length)
   })
 
+  it("moves down from the last list item into a following diagram", () => {
+    const view = atTextblockEdge(
+      createView(
+        doc(ul(li("First"), li("Last")), diagram("graph TD")),
+        "Last",
+        keymaps
+      )
+    )
+    expect(pressKey(view, "ArrowDown")).toBe(true)
+    const { $head } = view.state.selection
+    expect($head.parent.type.name).toBe("mermaid")
+    expect($head.parentOffset).toBe(0)
+  })
+
+  it("moves down between list items without skipping to a diagram", () => {
+    const view = atTextblockEdge(
+      createView(
+        doc(ul(li("First"), li("Last")), diagram("graph TD")),
+        "First",
+        keymaps
+      )
+    )
+    expect(pressKey(view, "ArrowDown")).toBe(false)
+  })
+
+  it("moves up from a list's first item into a diagram above it", () => {
+    const view = atTextblockEdge(
+      createView(doc(diagram("graph TD"), ul(li("First"))), "First", keymaps)
+    )
+    expect(pressKey(view, "ArrowUp")).toBe(true)
+    const { $head } = view.state.selection
+    expect($head.parent.type.name).toBe("mermaid")
+    expect($head.parentOffset).toBe("graph TD".length)
+  })
+
   it("leaves arrows alone when the next block is not a diagram", () => {
     const view = atTextblockEdge(
       createView(doc(p("Above"), p("Below")), "Above", keymaps)

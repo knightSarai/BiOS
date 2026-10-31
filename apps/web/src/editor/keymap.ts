@@ -6,6 +6,7 @@ import {
   setBlockType,
 } from "prosemirror-commands"
 import { keymap } from "prosemirror-keymap"
+import type { ResolvedPos } from "prosemirror-model"
 import { liftListItem, splitListItem } from "prosemirror-schema-list"
 import { NodeSelection, TextSelection, type Command } from "prosemirror-state"
 import { redo, undo } from "y-prosemirror"
@@ -131,6 +132,20 @@ const editSelectedDiagram: Command = (state, dispatch) => {
   return true
 }
 
+// The block the caret moves into can sit outside the current textblock's
+// parents (after a list or collapsible), so the search climbs until it meets a
+// neighbour.
+const adjacentDiagramEdge = ($head: ResolvedPos, forward: boolean) => {
+  for (let depth = $head.depth; depth > 0; depth--) {
+    const $edge = $head.doc.resolve(
+      forward ? $head.after(depth) : $head.before(depth)
+    )
+    const neighbour = forward ? $edge.nodeAfter : $edge.nodeBefore
+    if (neighbour) return neighbour.type === nodes.mermaid ? $edge.pos : null
+  }
+  return null
+}
+
 // A diagram's source is hidden until the caret is inside, so the browser can't
 // move the caret into it on its own.
 const enterDiagram =
@@ -141,11 +156,10 @@ const enterDiagram =
       return false
     }
     const forward = direction === "down" || direction === "right"
-    const $edge = state.doc.resolve(forward ? $head.after() : $head.before())
-    const target = forward ? $edge.nodeAfter : $edge.nodeBefore
-    if (target?.type !== nodes.mermaid) return false
+    const edge = adjacentDiagramEdge($head, forward)
+    if (edge === null) return false
     if (dispatch) {
-      const pos = forward ? $edge.pos + 1 : $edge.pos - 1
+      const pos = forward ? edge + 1 : edge - 1
       dispatch(
         state.tr
           .setSelection(TextSelection.create(state.doc, pos))

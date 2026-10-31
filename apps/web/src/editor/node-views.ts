@@ -1,8 +1,15 @@
 import type { Node } from "prosemirror-model"
-import type { EditorView, NodeView, ViewMutationRecord } from "prosemirror-view"
+import type {
+  Decoration,
+  EditorView,
+  NodeView,
+  ViewMutationRecord,
+} from "prosemirror-view"
 import { createStatusIconElement } from "@/activities/status-icon-element"
 import type { ActivityBridge, ActivityChipSummary } from "./activity-bridge"
 import { toggleCollapsibleAt, toggleTaskAt } from "./commands"
+import type { DiagramPreviews } from "./diagram-previews"
+import { MermaidView } from "./mermaid-view"
 
 const svgNamespace = "http://www.w3.org/2000/svg"
 
@@ -266,12 +273,21 @@ class ActivityChipView implements NodeView {
   }
 }
 
-const createNodeViews = (bridge: ActivityBridge) => ({
+const createNodeViews = (
+  bridge: ActivityBridge,
+  diagramPreviews: DiagramPreviews
+) => ({
   task_item: (node: Node, view: EditorView, getPos: GetPos) =>
     new TaskItemView(node, view, getPos),
   collapsible: (node: Node, view: EditorView, getPos: GetPos) =>
     new CollapsibleView(node, view, getPos),
   activity: (node: Node) => new ActivityChipView(node, bridge),
+  mermaid: (
+    node: Node,
+    view: EditorView,
+    getPos: GetPos,
+    decorations: readonly Decoration[]
+  ) => new MermaidView(node, view, getPos, diagramPreviews, decorations),
 })
 
 export { createNodeViews }

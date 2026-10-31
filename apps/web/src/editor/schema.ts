@@ -10,6 +10,11 @@ const textBlock = "my-1 min-h-6 leading-6"
 
 const blockIdOf = (node: Node) => node.attrs.id as string | null
 
+const isMermaidPre = (dom: HTMLElement) =>
+  dom.hasAttribute("data-mermaid") ||
+  dom.getAttribute("lang") === "mermaid" ||
+  dom.querySelector(":scope > code.language-mermaid") !== null
+
 const schema = new Schema({
   nodes: {
     doc: { content: "title block+" },
@@ -87,6 +92,36 @@ const schema = new Schema({
         "pre",
         {
           "data-block-id": blockIdOf(node),
+          dir: "ltr",
+          class:
+            "my-2 overflow-x-auto rounded-md bg-muted px-4 py-3 font-mono text-[13px] leading-5",
+        },
+        ["code", 0],
+      ],
+    },
+    mermaid: {
+      group: "block",
+      content: "text*",
+      marks: "",
+      code: true,
+      defining: true,
+      attrs: blockId,
+      parseDOM: [
+        {
+          tag: "pre",
+          priority: 60,
+          preserveWhitespace: "full",
+          getAttrs: (dom: HTMLElement | string) =>
+            typeof dom !== "string" && isMermaidPre(dom)
+              ? idFromDom(dom)
+              : false,
+        },
+      ],
+      toDOM: (node) => [
+        "pre",
+        {
+          "data-block-id": blockIdOf(node),
+          "data-mermaid": "",
           dir: "ltr",
           class:
             "my-2 overflow-x-auto rounded-md bg-muted px-4 py-3 font-mono text-[13px] leading-5",

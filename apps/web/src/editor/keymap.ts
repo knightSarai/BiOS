@@ -7,7 +7,7 @@ import {
 } from "prosemirror-commands"
 import { keymap } from "prosemirror-keymap"
 import { liftListItem, splitListItem } from "prosemirror-schema-list"
-import { TextSelection, type Command } from "prosemirror-state"
+import { NodeSelection, TextSelection, type Command } from "prosemirror-state"
 import { redo, undo } from "y-prosemirror"
 import { blockCatalog } from "./block-catalog"
 import {
@@ -69,7 +69,12 @@ const resetBlockAtStart: Command = (state, dispatch) => {
   const { $cursor } = state.selection as TextSelection
   if (!$cursor || $cursor.parentOffset > 0) return false
   const parent = $cursor.parent
-  if (parent.type === nodes.heading || parent.type === nodes.code_block) {
+  if (parent.type === nodes.mermaid && parent.content.size > 0) return true
+  if (
+    parent.type === nodes.heading ||
+    parent.type === nodes.code_block ||
+    parent.type === nodes.mermaid
+  ) {
     return setBlockType(nodes.paragraph)(state, dispatch)
   }
   if ($cursor.depth < 2 || $cursor.index(-1) !== 0) return false
@@ -100,8 +105,60 @@ const indentInCode: Command = (state, dispatch) => {
   return true
 }
 
+const leaveDiagramSource: Command = (state, dispatch) => {
+  const { $from } = state.selection
+  if ($from.parent.type !== nodes.mermaid) return false
+  if (dispatch) {
+    dispatch(
+      state.tr.setSelection(NodeSelection.create(state.doc, $from.before()))
+    )
+  }
+  return true
+}
+
+const editSelectedDiagram: Command = (state, dispatch) => {
+  const { selection } = state
+  if (
+    !(selection instanceof NodeSelection) ||
+    selection.node.type !== nodes.mermaid
+  ) {
+    return false
+  }
+  if (dispatch) {
+    const end = selection.to - 1
+    dispatch(state.tr.setSelection(TextSelection.create(state.doc, end)))
+  }
+  return true
+}
+
+// A diagram's source is hidden until the caret is inside, so the browser can't
+// move the caret into it on its own.
+const enterDiagram =
+  (direction: "up" | "down" | "left" | "right"): Command =>
+  (state, dispatch, view) => {
+    const { $head, empty } = state.selection
+    if (!empty || $head.depth === 0 || !view?.endOfTextblock(direction)) {
+      return false
+    }
+    const forward = direction === "down" || direction === "right"
+    const $edge = state.doc.resolve(forward ? $head.after() : $head.before())
+    const target = forward ? $edge.nodeAfter : $edge.nodeBefore
+    if (target?.type !== nodes.mermaid) return false
+    if (dispatch) {
+      const pos = forward ? $edge.pos + 1 : $edge.pos - 1
+      dispatch(
+        state.tr
+          .setSelection(TextSelection.create(state.doc, pos))
+          .scrollIntoView()
+      )
+    }
+    return true
+  }
+
 const blockShortcuts = Object.fromEntries(
-  blockCatalog.map((item) => [item.keys, turnInto(item.kind)])
+  blockCatalog.flatMap((item) =>
+    item.keys ? [[item.keys, turnInto(item.kind)]] : []
+  )
 )
 
 const editorKeymap = keymap({
@@ -114,6 +171,7 @@ const editorKeymap = keymap({
   "Mod-e": toggleFormat(marks.code),
   "Mod-Shift-x": toggleFormat(marks.strike),
   Enter: chainCommands(
+    editSelectedDiagram,
     titleEnter,
     splitListItem(nodes.list_item),
     splitListItem(nodes.task_item, { checked: false })
@@ -125,6 +183,11 @@ const editorKeymap = keymap({
   "Shift-Tab": outdentListItem,
   "Alt-ArrowUp": moveBlock(-1),
   "Alt-ArrowDown": moveBlock(1),
+  Escape: leaveDiagramSource,
+  ArrowUp: enterDiagram("up"),
+  ArrowDown: enterDiagram("down"),
+  ArrowLeft: enterDiagram("left"),
+  ArrowRight: enterDiagram("right"),
 })
 
 const editorBaseKeymap = keymap(baseKeymap)

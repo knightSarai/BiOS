@@ -13,6 +13,7 @@ import {
 } from "y-prosemirror"
 import type * as Y from "yjs"
 import { blockIdsPlugin } from "./block-ids"
+import { diagramPreviewsOf, pruneDiagramPreviews } from "./diagram-previews"
 import { DOCUMENT_FRAGMENT, seedDocument, titleOf } from "./document-content"
 import { editorUiPlugin, readUi, setFlashPos, slashItems } from "./editor-ui"
 import { editorInputRules } from "./input-rules"
@@ -24,6 +25,7 @@ import {
   onSelectedActivity,
 } from "./activity-commands"
 import { trackActivityUndo } from "./activity-undo"
+import { mermaidEditingPlugin } from "./mermaid-view"
 import { createNodeViews } from "./node-views"
 import { schema } from "./schema"
 import { titleAccessoryPlugin } from "./title-accessory"
@@ -102,6 +104,7 @@ const isUndoOrRedo = (tr: Transaction) => {
 
 const mountEditor = (options: MountEditorOptions) => {
   let view: EditorView | null = null
+  const diagramPreviews = diagramPreviewsOf(options.ydoc)
   let stopUndoTracking = () => {}
   let disposed = false
   let pendingTitle: string | null = null
@@ -112,6 +115,7 @@ const mountEditor = (options: MountEditorOptions) => {
     if (pendingTitle === null) return
     options.onContentChange(pendingTitle)
     pendingTitle = null
+    if (view) pruneDiagramPreviews(diagramPreviews, view.state.doc)
   }
 
   const scheduleContentSave = (title: string) => {
@@ -157,6 +161,7 @@ const mountEditor = (options: MountEditorOptions) => {
         dropCursor({ color: "var(--color-accent-text)", width: 2 }),
         gapCursor(),
         blockIdsPlugin,
+        mermaidEditingPlugin,
         ...(options.titleAccessory
           ? [titleAccessoryPlugin(options.titleAccessory)]
           : []),
@@ -168,7 +173,7 @@ const mountEditor = (options: MountEditorOptions) => {
 
     const editor: EditorView = new EditorView(options.element, {
       state,
-      nodeViews: createNodeViews(options.activities),
+      nodeViews: createNodeViews(options.activities, diagramPreviews),
       attributes: (state) => editorAttributes(state, options.slashMenuId),
       dispatchTransaction(tr) {
         if (disposed) return
@@ -191,6 +196,7 @@ const mountEditor = (options: MountEditorOptions) => {
     })
 
     view = editor
+    pruneDiagramPreviews(diagramPreviews, editor.state.doc)
     options.onState({ view: editor, state: editor.state })
 
     options.onLoaded(titleOf(editor.state.doc))

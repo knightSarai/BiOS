@@ -41,9 +41,11 @@ function TurnIntoItems({ view, active, before }: TurnIntoItemsProps) {
         <Icon className="text-muted-foreground" />
         <span className="flex-1">{item.label}</span>
         {active === item.kind ? <Check className="text-accent-text" /> : null}
-        <DropdownMenuShortcut className="max-md:hidden">
-          {shortcutKeys(item.keys).join(" ")}
-        </DropdownMenuShortcut>
+        {item.keys ? (
+          <DropdownMenuShortcut className="max-md:hidden">
+            {shortcutKeys(item.keys).join(" ")}
+          </DropdownMenuShortcut>
+        ) : null}
       </DropdownMenuItem>
     )
   })

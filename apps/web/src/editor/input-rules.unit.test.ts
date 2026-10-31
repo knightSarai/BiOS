@@ -54,6 +54,20 @@ describe("markdown shortcuts", () => {
     expect(view.state.doc.child(1).textContent).toBe("const x = 1")
   })
 
+  it("turns ```mermaid into a diagram", () => {
+    const view = emptyBody()
+    typeText(view, "```mermaid flowchart LR")
+    expect(blockNames(view.state.doc)).toEqual(["title", "mermaid"])
+    expect(view.state.doc.child(1).textContent).toBe("flowchart LR")
+  })
+
+  it("keeps other fenced languages as code blocks", () => {
+    const view = emptyBody()
+    typeText(view, "```mermaidish x")
+    expect(blockNames(view.state.doc)).toEqual(["title", "code_block"])
+    expect(view.state.doc.child(1).attrs.language).toBe("mermaidish")
+  })
+
   it("replaces --- with a divider and a fresh paragraph", () => {
     const view = emptyBody()
     typeText(view, "---")

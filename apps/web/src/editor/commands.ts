@@ -152,6 +152,9 @@ const turnInto =
       case "code_block":
         chain.run(setBlockType(nodes.code_block))
         break
+      case "mermaid":
+        chain.run(setBlockType(nodes.mermaid))
+        break
       case "blockquote":
         chain.run(setBlockType(nodes.paragraph))
         chain.run(wrapIn(nodes.blockquote))
@@ -185,6 +188,7 @@ const activeBlockKind = (state: EditorState): BlockKind | null => {
     return `heading${parent.attrs.level as 1 | 2 | 3}`
   }
   if (parent.type === nodes.code_block) return "code_block"
+  if (parent.type === nodes.mermaid) return "mermaid"
   return "paragraph"
 }
 

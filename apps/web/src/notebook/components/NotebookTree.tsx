@@ -28,7 +28,12 @@ import {
   pathTo,
   type TreeNode,
 } from "../tree"
-import { actionSheetAtom, expandedFoldersAtom, renamingAtom } from "./atoms"
+import {
+  actionSheetAtom,
+  expandedFoldersAtom,
+  hiddenRevealAtom,
+  renamingAtom,
+} from "./atoms"
 import { InlineName } from "./InlineName"
 import { DocumentIcon, FolderIcon } from "./ItemIcon"
 import {
@@ -89,6 +94,8 @@ type TreeContext = {
   workspace: NotebookWorkspace
   actions: ReturnType<typeof useNotebookActions>
   openIds: Set<string>
+  toggleFolder: (folderId: string) => void
+  revealPath: (folderId: string) => void
   touch: boolean
   onNavigate?: () => void
 }
@@ -103,6 +110,7 @@ function NotebookTree({
   const { data } = useQuery(notebookTreeQuery(workspace.id))
   const params = useParams({ strict: false })
   const expanded = useAtomValue(expandedFoldersAtom)
+  const [hiddenReveal, setHiddenReveal] = useAtom(hiddenRevealAtom)
   const store = useStore()
   const setDropTarget = useSetAtom(dropTargetAtom)
   const touch = useMediaQuery("(pointer: coarse)", { noSsr: true })
@@ -114,10 +122,16 @@ function NotebookTree({
     params.folderId ??
     data.documents.find((document) => document.id === params.documentId)
       ?.folderId
+  const hiddenIds =
+    currentFolderId && hiddenReveal?.anchorId === currentFolderId
+      ? hiddenReveal.folderIds
+      : []
   const openIds = new Set([
     ...(expanded[workspace.id] ?? []),
     ...(currentFolderId
-      ? pathTo(currentFolderId, byId).map((folder) => folder.id)
+      ? pathTo(currentFolderId, byId)
+          .map((folder) => folder.id)
+          .filter((id) => !hiddenIds.includes(id))
       : []),
   ])
   const tree = buildTree(data.folders, data.documents)
@@ -219,7 +233,41 @@ function NotebookTree({
     void actions.moveFolderTo(source.folder.id, intoFolderId, sortKey)
   }
 
-  const ctx: TreeContext = { workspace, actions, openIds, touch, onNavigate }
+  // The route keeps the current path open on its own; storing it on click is
+  // what keeps it open after the user navigates somewhere else.
+  const revealPath = (folderId: string) =>
+    actions.expandAll(pathTo(folderId, byId).map((folder) => folder.id))
+
+  const toggleFolder = (folderId: string) => {
+    if (openIds.has(folderId)) {
+      actions.collapse(folderId)
+      if (currentFolderId) {
+        setHiddenReveal({
+          anchorId: currentFolderId,
+          folderIds: [...hiddenIds, folderId],
+        })
+      }
+      return
+    }
+    actions.expand(folderId)
+    setHiddenReveal(
+      (current) =>
+        current && {
+          ...current,
+          folderIds: current.folderIds.filter((id) => id !== folderId),
+        }
+    )
+  }
+
+  const ctx: TreeContext = {
+    workspace,
+    actions,
+    openIds,
+    toggleFolder,
+    revealPath,
+    touch,
+    onNavigate,
+  }
 
   return (
     <DragDropProvider
@@ -390,7 +438,7 @@ function TreeRow({
           <button
             type="button"
             aria-label={isOpen ? `Collapse ${title}` : `Expand ${title}`}
-            onClick={() => ctx.actions.toggle(id)}
+            onClick={() => ctx.toggleFolder(id)}
             className="relative z-10 flex size-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground max-md:size-8"
           >
             <ChevronRight
@@ -425,7 +473,10 @@ function TreeRow({
           <Link
             to="/$workspace/notebook/folders/$folderId"
             params={{ workspace: ctx.workspace.slug, folderId: id }}
-            onClick={ctx.onNavigate}
+            onClick={() => {
+              ctx.revealPath(id)
+              ctx.onNavigate?.()
+            }}
             draggable={false}
             className="min-w-0 flex-1 truncate after:absolute after:inset-0"
           >
@@ -435,7 +486,10 @@ function TreeRow({
           <Link
             to="/$workspace/documents/$documentId"
             params={{ workspace: ctx.workspace.slug, documentId: id }}
-            onClick={ctx.onNavigate}
+            onClick={() => {
+              ctx.revealPath(node.document.folderId)
+              ctx.onNavigate?.()
+            }}
             draggable={false}
             dir="auto"
             className={cn(

@@ -41,24 +41,24 @@ const useNotebookActions = (workspace: NotebookWorkspace) => {
   const restore = useRestoreDeleted(workspace.id)
   const duplicate = useDuplicateDocument(workspace.id)
 
-  const expand = (folderId: string) =>
+  const expandAll = (folderIds: string[]) =>
     setExpanded((current) => {
       const open = current[workspace.id] ?? []
-      return open.includes(folderId)
+      const added = folderIds.filter((id) => !open.includes(id))
+      return added.length === 0
         ? current
-        : { ...current, [workspace.id]: [...open, folderId] }
+        : { ...current, [workspace.id]: [...open, ...added] }
     })
 
-  const toggle = (folderId: string) =>
-    setExpanded((current) => {
-      const open = current[workspace.id] ?? []
-      return {
-        ...current,
-        [workspace.id]: open.includes(folderId)
-          ? open.filter((id) => id !== folderId)
-          : [...open, folderId],
-      }
-    })
+  const expand = (folderId: string) => expandAll([folderId])
+
+  const collapse = (folderId: string) =>
+    setExpanded((current) => ({
+      ...current,
+      [workspace.id]: (current[workspace.id] ?? []).filter(
+        (id) => id !== folderId
+      ),
+    }))
 
   const openDocument = (documentId: string) =>
     navigate({
@@ -186,16 +186,17 @@ const useNotebookActions = (workspace: NotebookWorkspace) => {
     copyToClipboard(linkTo(kind, id), "Link")
 
   return {
+    collapse,
     copyLink,
     duplicateDocument,
     expand,
+    expandAll,
     moveDocumentTo,
     moveFolderTo,
     newDocument,
     newFolder,
     remove,
     rename,
-    toggle,
   }
 }
 

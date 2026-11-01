@@ -42,6 +42,13 @@ const expandedFoldersAtom = atomWithStorage<Record<string, string[]>>(
   { getOnInit: true }
 )
 
+// Folders the user collapsed while they sat on the path to the open page;
+// tied to that page so the next navigation reveals its own path again.
+const hiddenRevealAtom = atom<{
+  anchorId: string
+  folderIds: string[]
+} | null>(null)
+
 const renamingAtom = atom<NotebookItemRef | null>(null)
 const movingAtom = atom<NotebookItemTarget | null>(null)
 const deletingAtom = atom<NotebookItemTarget | null>(null)
@@ -62,6 +69,7 @@ export {
   attachingAtom,
   deletingAtom,
   expandedFoldersAtom,
+  hiddenRevealAtom,
   iconPickerAtom,
   movingAtom,
   renamingAtom,

@@ -1,3 +1,4 @@
+import { Fragment, Slice, type Node } from "prosemirror-model"
 import { AllSelection, TextSelection } from "prosemirror-state"
 import { describe, expect, it } from "vitest"
 import { yXmlFragmentToProseMirrorRootNode } from "y-prosemirror"
@@ -167,5 +168,85 @@ describe("block ids", () => {
     expect(textBlock.textContent).toBe("Keep me")
     expect(textBlock.attrs.id).toBe("original")
     expect(view.state.doc.child(1).attrs.id).not.toBe("original")
+  })
+
+  it("keeps a block's id on its text when Enter is pressed at its end", () => {
+    const start = doc(p("Keep me"))
+    const view = createView(start, "Keep me", [blockIdsPlugin, ...keymaps])
+    view.dispatch(
+      view.state.tr.setNodeAttribute(start.child(0).nodeSize, "id", "original")
+    )
+    pressKey(view, "Enter")
+    expect(view.state.doc.child(1).attrs.id).toBe("original")
+    expect(view.state.doc.child(2).attrs.id).not.toBe("original")
+  })
+
+  const block = (id: string, value: string) =>
+    schema.node("paragraph", { id }, [schema.text(value)])
+
+  const paste = (start: Node, caret: number, ...blocks: Node[]) => {
+    const view = createView(start, caret, [blockIdsPlugin])
+    view.dispatch(
+      view.state.tr.replaceSelection(new Slice(Fragment.from(blocks), 0, 0))
+    )
+    return [...view.state.doc.content.content].slice(1)
+  }
+
+  it("keeps the original's id when its copy is pasted at its start", () => {
+    const start = doc(block("original", "Linked"))
+    const result = paste(
+      start,
+      findText(start, "Linked"),
+      block("original", "Linked copy, longer than the original")
+    )
+    const owner = result.find((node) => node.attrs.id === "original")
+    expect(owner?.textContent).toBe("Linked")
+    expect(new Set(result.map((node): unknown => node.attrs.id)).size).toBe(
+      result.length
+    )
+  })
+
+  it("keeps the original's id when its copy is pasted into a block above", () => {
+    const start = doc(p(""), block("original", "Linked"))
+    const result = paste(
+      start,
+      start.child(0).nodeSize + 1,
+      block("original", "Linked copy, longer than the original")
+    )
+    expect(result.map((node) => node.textContent)).toEqual([
+      "Linked copy, longer than the original",
+      "Linked",
+    ])
+    expect(result[0]?.attrs.id).not.toBe("original")
+    expect(result[1]?.attrs.id).toBe("original")
+  })
+
+  it("keeps every original's id when several copied blocks are pasted above", () => {
+    const start = doc(block("a", "aa"), block("b", "bb"))
+    const result = paste(
+      start,
+      findText(start, "aa"),
+      block("a", "aa, but longer"),
+      block("b", "bb, but longer")
+    )
+    const ownerOf = (id: string) =>
+      result.find((node) => node.attrs.id === id)?.textContent
+    expect(ownerOf("a")).toBe("aa")
+    expect(ownerOf("b")).toBe("bb")
+  })
+
+  it("gives an id that was already shared to the largest block, wherever it sits", () => {
+    for (const order of [
+      ["short", "much longer text"],
+      ["much longer text", "short"],
+    ]) {
+      const start = doc(...order.map((value) => block("shared", value)), p("z"))
+      const view = createView(start, "z", [blockIdsPlugin])
+      typeText(view, "!")
+      const owner = [...view.state.doc.content.content].find(
+        (node) => node.attrs.id === "shared"
+      )
+      expect(owner?.textContent).toBe("much longer text")
+    }
   })
 })

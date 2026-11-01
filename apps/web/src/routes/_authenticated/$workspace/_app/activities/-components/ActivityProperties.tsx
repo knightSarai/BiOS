@@ -1,11 +1,12 @@
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
-import { Check, ChevronDown, FileText } from "lucide-react"
+import { Check, ChevronDown, FileText, Target } from "lucide-react"
 import { formatActivityTimestamp, now, parseUtc } from "@knight-os/server/core"
 import { activityKey, areaDotClassNames } from "@/activities/areas"
 import { StatusIcon } from "@/activities/components/StatusIcon"
 import { StatusMenu } from "@/activities/components/StatusMenu"
 import { statusLabels } from "@/activities/status"
+import { GoalIcon } from "@/goals/components/GoalIcon"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,8 +17,10 @@ import {
 } from "@/components/ui/dropdown-menu"
 import {
   useMoveActivityToArea,
+  useSetActivityGoal,
   useSetActivityStatus,
 } from "@/local-db/activity-mutations"
+import { goalListQuery } from "@/local-db/goal-queries"
 import { activityQuery, areasQuery } from "@/local-db/activity-queries"
 import type { ActivityOrigin, ActivityRow } from "@/local-db/db"
 import { documentQuery } from "@/local-db/document-queries"
@@ -209,6 +212,80 @@ function AreaControl({ activity, workspace, className }: PropertyControlProps) {
   )
 }
 
+function GoalControl({ activity, workspace, className }: PropertyControlProps) {
+  const { data: goals } = useQuery(goalListQuery(workspace.id))
+  const setGoal = useSetActivityGoal(workspace.id)
+  const goal = goals?.find((candidate) => candidate.id === activity.goalId)
+  const label = goal ? goal.title || "Untitled goal" : "No goal"
+  const choices = (goals ?? []).filter(
+    (candidate) =>
+      candidate.status === "in-progress" || candidate.id === activity.goalId
+  )
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <button
+            type="button"
+            aria-label={`Goal: ${label}`}
+            className={className}
+          />
+        }
+      >
+        {goal ? (
+          <GoalIcon icon={goal.icon} className="size-3.5" />
+        ) : (
+          <Target className="size-3.5 shrink-0 text-muted-foreground" />
+        )}
+        <span
+          className={cn("flex-1 truncate", !goal && "text-muted-foreground")}
+        >
+          {label}
+        </span>
+        <ChevronDown className="size-3.5 text-muted-foreground" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-60">
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Goal</DropdownMenuLabel>
+          {choices.map((option) => (
+            <DropdownMenuItem
+              key={option.id}
+              className="min-h-8 max-md:min-h-11"
+              onClick={() =>
+                setGoal.mutate({ id: activity.id, goalId: option.id })
+              }
+            >
+              <GoalIcon icon={option.icon} className="size-3.5" />
+              <span className="flex-1 truncate">
+                {option.title || "Untitled goal"}
+              </span>
+              {option.id === activity.goalId ? (
+                <Check className="text-accent-text" />
+              ) : null}
+            </DropdownMenuItem>
+          ))}
+          {choices.length === 0 ? (
+            <p className="px-2 py-1.5 text-xs text-muted-foreground">
+              No goals in progress.
+            </p>
+          ) : null}
+          {activity.goalId ? (
+            <DropdownMenuItem
+              className="min-h-8 max-md:min-h-11"
+              onClick={() => setGoal.mutate({ id: activity.id, goalId: null })}
+            >
+              <span className="flex-1 text-muted-foreground">
+                Remove from goal
+              </span>
+            </DropdownMenuItem>
+          ) : null}
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 function CreatedAt({ activity, workspace, className }: PropertyControlProps) {
   return (
     <span className={className}>
@@ -224,6 +301,13 @@ function CreatedAt({ activity, workspace, className }: PropertyControlProps) {
 function ActivityProperties({ activity, workspace }: ActivityPropertiesProps) {
   return (
     <div className="flex flex-col gap-1 text-sm">
+      <Property label="Created">
+        <CreatedAt
+          activity={activity}
+          workspace={workspace}
+          className="flex min-h-8 items-center px-2 text-muted-foreground"
+        />
+      </Property>
       <Property label="Status">
         <StatusControl
           activity={activity}
@@ -238,6 +322,13 @@ function ActivityProperties({ activity, workspace }: ActivityPropertiesProps) {
           className={propertyButtonClassName}
         />
       </Property>
+      <Property label="Goal">
+        <GoalControl
+          activity={activity}
+          workspace={workspace}
+          className={propertyButtonClassName}
+        />
+      </Property>
       {activity.origin ? (
         <Property label="Written in">
           <OriginLink
@@ -247,13 +338,6 @@ function ActivityProperties({ activity, workspace }: ActivityPropertiesProps) {
           />
         </Property>
       ) : null}
-      <Property label="Created">
-        <CreatedAt
-          activity={activity}
-          workspace={workspace}
-          className="px-2 text-muted-foreground"
-        />
-      </Property>
     </div>
   )
 }
@@ -264,6 +348,11 @@ function ActivityPropertyChips({
 }: ActivityPropertiesProps) {
   return (
     <div className="mb-6 flex flex-wrap items-center gap-2 text-sm">
+      <CreatedAt
+        activity={activity}
+        workspace={workspace}
+        className="px-1 text-muted-foreground"
+      />
       <StatusControl
         activity={activity}
         workspace={workspace}
@@ -274,10 +363,10 @@ function ActivityPropertyChips({
         workspace={workspace}
         className={chipClassName}
       />
-      <CreatedAt
+      <GoalControl
         activity={activity}
         workspace={workspace}
-        className="px-1 text-muted-foreground"
+        className={chipClassName}
       />
     </div>
   )

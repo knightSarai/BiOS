@@ -244,6 +244,33 @@ const schema = new Schema({
         { "data-activity-id": node.attrs.activityId as string },
       ],
     },
+    mention: {
+      group: "inline",
+      inline: true,
+      atom: true,
+      selectable: true,
+      attrs: { targetKind: { default: "document" }, targetId: {} },
+      leafText: () => "",
+      parseDOM: [
+        {
+          tag: "span[data-mention-id]",
+          getAttrs: (dom: HTMLElement | string) => {
+            const targetId =
+              typeof dom === "string"
+                ? null
+                : dom.getAttribute("data-mention-id")
+            return targetId ? { targetKind: "document", targetId } : false
+          },
+        },
+      ],
+      toDOM: (node) => [
+        "span",
+        {
+          "data-mention-id": node.attrs.targetId as string,
+          "data-mention-kind": node.attrs.targetKind as string,
+        },
+      ],
+    },
     hard_break: {
       inline: true,
       group: "inline",

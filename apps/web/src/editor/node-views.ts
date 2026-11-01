@@ -2,6 +2,7 @@ import type { Node } from "prosemirror-model"
 import type { EditorView, NodeView, ViewMutationRecord } from "prosemirror-view"
 import { createStatusIconElement } from "@/activities/status-icon-element"
 import type { ActivityBridge, ActivityChipSummary } from "./activity-bridge"
+import type { MentionBridge, MentionSummary } from "./mention-bridge"
 import { toggleCollapsibleAt, toggleTaskAt } from "./commands"
 
 const svgNamespace = "http://www.w3.org/2000/svg"
@@ -266,12 +267,102 @@ class ActivityChipView implements NodeView {
   }
 }
 
-const createNodeViews = (bridge: ActivityBridge) => ({
+const FILE_ICON_PATH =
+  "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z M14 2v4a2 2 0 0 0 2 2h4"
+const CALENDAR_ICON_PATH =
+  "M8 2v4 M16 2v4 M3 10h18 M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"
+
+class MentionChipView implements NodeView {
+  dom: HTMLSpanElement
+  private icon: HTMLSpanElement
+  private title: HTMLSpanElement
+  private unsubscribe: () => void
+
+  constructor(
+    private node: Node,
+    private readonly bridge: MentionBridge
+  ) {
+    this.dom = document.createElement("span")
+    this.dom.contentEditable = "false"
+    this.dom.dataset.mentionId = this.documentId
+    this.dom.className =
+      "mx-px inline-flex max-w-full cursor-pointer items-baseline gap-1 rounded-sm px-0.5 align-baseline text-accent-text underline decoration-accent-text/30 underline-offset-4 transition-colors hover:bg-muted hover:decoration-accent-text"
+
+    this.icon = document.createElement("span")
+    this.icon.className =
+      "inline-flex size-4 shrink-0 items-center justify-center self-center text-[13px] leading-none no-underline"
+    this.title = document.createElement("span")
+    this.title.className = "min-w-0 truncate"
+    this.dom.append(this.icon, this.title)
+    this.dom.addEventListener("click", () => this.bridge.open(this.documentId))
+    this.unsubscribe = this.subscribe()
+  }
+
+  private get documentId() {
+    return this.node.attrs.targetId as string
+  }
+
+  private subscribe() {
+    return this.bridge.observe(this.documentId, (summary) =>
+      this.render(summary)
+    )
+  }
+
+  private render(summary: MentionSummary | null | undefined) {
+    if (!summary) {
+      this.icon.replaceChildren(icon(FILE_ICON_PATH, "size-3.5"))
+      this.title.textContent =
+        summary === null ? "Deleted document" : "Loading…"
+      this.dom.classList.toggle("line-through", summary === null)
+      return
+    }
+    this.dom.classList.remove("line-through")
+    if (summary.icon) {
+      this.icon.replaceChildren(summary.icon)
+    } else {
+      const glyph = icon(
+        summary.journal ? CALENDAR_ICON_PATH : FILE_ICON_PATH,
+        "size-3.5"
+      )
+      glyph.setAttribute("stroke-width", "2")
+      this.icon.replaceChildren(glyph)
+    }
+    this.title.textContent = summary.title || "Untitled"
+  }
+
+  update(node: Node) {
+    if (node.type !== this.node.type) return false
+    const changed = node.attrs.targetId !== this.node.attrs.targetId
+    this.node = node
+    if (changed) {
+      this.unsubscribe()
+      this.dom.dataset.mentionId = this.documentId
+      this.unsubscribe = this.subscribe()
+    }
+    return true
+  }
+
+  ignoreMutation() {
+    return true
+  }
+
+  destroy() {
+    this.unsubscribe()
+  }
+}
+
+const createNodeViews = (
+  bridge: ActivityBridge,
+  mentions: MentionBridge | undefined
+) => ({
   task_item: (node: Node, view: EditorView, getPos: GetPos) =>
     new TaskItemView(node, view, getPos),
   collapsible: (node: Node, view: EditorView, getPos: GetPos) =>
     new CollapsibleView(node, view, getPos),
   activity: (node: Node) => new ActivityChipView(node, bridge),
+  ...(mentions
+    ? { mention: (node: Node) => new MentionChipView(node, mentions) }
+    : {}),
 })
 
 export { createNodeViews }

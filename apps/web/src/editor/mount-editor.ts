@@ -14,10 +14,13 @@ import {
 import type * as Y from "yjs"
 import { blockIdsPlugin } from "./block-ids"
 import { DOCUMENT_FRAGMENT, seedDocument, titleOf } from "./document-content"
+import { contentOf, type EditorContent } from "./mention-index"
 import { editorUiPlugin, readUi, setFlashPos, slashItems } from "./editor-ui"
 import { editorInputRules } from "./input-rules"
 import { editorBaseKeymap, editorKeymap } from "./keymap"
 import type { ActivityBridge } from "./activity-bridge"
+import type { MentionBridge } from "./mention-bridge"
+import { mentionPlugin } from "./mention-plugin"
 import {
   ACTIVITY_CREATION_META,
   createActivitiesCommand,
@@ -46,9 +49,10 @@ type MountEditorOptions = {
   titleAccessory: HTMLElement | null
   onRequestLink: () => void
   activities: ActivityBridge
+  mentions?: MentionBridge
   onError: (message: string) => void
   onState: (snapshot: { view: EditorView; state: EditorState } | null) => void
-  onContentChange: (title: string) => void
+  onContentChange: (content: EditorContent) => void
   onLoaded: (title: string) => void
 }
 
@@ -104,18 +108,18 @@ const mountEditor = (options: MountEditorOptions) => {
   let view: EditorView | null = null
   let stopUndoTracking = () => {}
   let disposed = false
-  let pendingTitle: string | null = null
+  let pendingContent: EditorContent | null = null
   let saveTimer: ReturnType<typeof setTimeout> | undefined
 
   const flushContent = () => {
     clearTimeout(saveTimer)
-    if (pendingTitle === null) return
-    options.onContentChange(pendingTitle)
-    pendingTitle = null
+    if (pendingContent === null) return
+    options.onContentChange(pendingContent)
+    pendingContent = null
   }
 
-  const scheduleContentSave = (title: string) => {
-    pendingTitle = title
+  const scheduleContentSave = (content: EditorContent) => {
+    pendingContent = content
     clearTimeout(saveTimer)
     saveTimer = setTimeout(flushContent, CONTENT_SAVE_DELAY_MS)
   }
@@ -140,6 +144,7 @@ const mountEditor = (options: MountEditorOptions) => {
       doc,
       plugins: [
         editorUiPlugin,
+        ...(options.mentions ? [mentionPlugin(options.mentions)] : []),
         keymap({
           "Mod-k": () => {
             options.onRequestLink()
@@ -168,7 +173,7 @@ const mountEditor = (options: MountEditorOptions) => {
 
     const editor: EditorView = new EditorView(options.element, {
       state,
-      nodeViews: createNodeViews(options.activities),
+      nodeViews: createNodeViews(options.activities, options.mentions),
       attributes: (state) => editorAttributes(state, options.slashMenuId),
       dispatchTransaction(tr) {
         if (disposed) return
@@ -186,7 +191,7 @@ const mountEditor = (options: MountEditorOptions) => {
           options.activities.restore(reversed.activityIds)
         }
         options.onState({ view: editor, state: next })
-        if (tr.docChanged) scheduleContentSave(titleOf(next.doc))
+        if (tr.docChanged) scheduleContentSave(contentOf(next.doc))
       },
     })
 

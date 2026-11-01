@@ -13,7 +13,8 @@ import {
 type ActivityBridgeOptions = {
   queryClient: QueryClient
   workspace: WorkspaceRef
-  origin: (blockId: string | null) => ActivityOrigin
+  origin: (blockId: string | null) => ActivityOrigin | null
+  goalId?: string | null
   areaId: () => Promise<string>
   open: (activityId: string) => void
 }
@@ -58,6 +59,7 @@ const createActivityBridge = (
           drafts.map((draft) => ({
             id: draft.activityId,
             areaId,
+            goalId: options.goalId ?? null,
             title: draft.title,
             status: draft.status,
             origin: options.origin(draft.blockId),

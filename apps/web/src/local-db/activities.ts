@@ -1,9 +1,12 @@
-import { DexieYProvider, type YUpdateRow } from "y-dexie"
 import { now, parseUtc } from "@knight-os/server/core"
-import { seedDocumentWithTitle } from "@/editor/document-content"
 import { activityKey } from "@/activities/areas"
 import { isOpenStatus, type ActivityStatus } from "@/activities/status"
 import type { ActivityOrigin, ActivityRow, LocalDb } from "./db"
+import {
+  contentUpdatesTable,
+  seedContentWithTitle,
+  type ContentUpdate,
+} from "./y-content"
 
 type ActivitiesContext = {
   workspaceId: string
@@ -11,12 +14,13 @@ type ActivitiesContext = {
 
 type DeletedActivity = {
   row: Omit<ActivityRow, "content">
-  contentUpdates: Omit<YUpdateRow, "i">[]
+  contentUpdates: ContentUpdate[]
 }
 
 type NewActivity = {
   id: string
   areaId: string
+  goalId?: string | null
   title: string
   status: ActivityStatus
   origin: ActivityOrigin | null
@@ -104,28 +108,11 @@ class ActivitiesRepository {
   private async seedContent(id: string, title: string) {
     const row = await this.byId(id)
     if (!row) return
-    const provider = DexieYProvider.load(row.content)
-    try {
-      await provider.whenLoaded
-      seedDocumentWithTitle(row.content, title)
-      await this.contentWritesSettled()
-    } finally {
-      DexieYProvider.release(row.content)
-    }
+    await seedContentWithTitle(this.db, "activities", row.content, title)
   }
 
   private contentUpdatesTable() {
-    const name = this.db.activities.schema.yProps?.find(
-      (yProp) => yProp.prop === "content"
-    )?.updatesTable
-    if (!name) throw new Error("Activities have no content updates table.")
-    return this.db.table<YUpdateRow, number, Omit<YUpdateRow, "i">>(name)
-  }
-
-  // IndexedDB runs transactions on one store in order, so this read only
-  // finishes after the seed update y-dexie just queued has been written.
-  private async contentWritesSettled() {
-    await this.contentUpdatesTable().count()
+    return contentUpdatesTable(this.db, "activities")
   }
 
   delete(id: string) {
@@ -145,6 +132,7 @@ class ActivitiesRepository {
             id: row.id,
             workspaceId: row.workspaceId,
             areaId: row.areaId,
+            goalId: row.goalId,
             number: row.number,
             title: row.title,
             status: row.status,
@@ -201,6 +189,7 @@ class ActivitiesRepository {
             id: activity.id,
             workspaceId: this.ctx.workspaceId,
             areaId: area.id,
+            goalId: activity.goalId ?? null,
             number: area.nextNumber,
             title: activity.title,
             status: activity.status,
@@ -253,6 +242,18 @@ class ActivitiesRepository {
         })
       }
     )
+  }
+
+  async setGoal(id: string, goalId: string | null) {
+    await this.scoped(id).modify({ goalId, updatedAt: parseUtc(now()) })
+  }
+
+  listForGoal(goalId: string) {
+    return this.db.activities
+      .where("goalId")
+      .equals(goalId)
+      .filter((row) => row.workspaceId === this.ctx.workspaceId)
+      .toArray()
   }
 
   async syncTitle(id: string, title: string) {

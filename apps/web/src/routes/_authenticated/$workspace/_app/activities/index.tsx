@@ -6,6 +6,7 @@ import { areaDotClassNames } from "@/activities/areas"
 import { EmptyState } from "@/components/common/EmptyState"
 import { activityListQuery, areasQuery } from "@/local-db/activity-queries"
 import { cn } from "@/lib/utils"
+import { EntityDocuments } from "@/notebook/components/EntityDocuments"
 import { Page } from "@layout/content/Page"
 import { ActivityList } from "./-components/ActivityList"
 
@@ -78,6 +79,17 @@ function ActivitiesPage() {
                 </Link>
               ))}
             </nav>
+            {currentArea ? (
+              <EntityDocuments
+                owner={{ kind: "area", id: currentArea.id }}
+                workspace={{
+                  id: workspace.id,
+                  slug: workspace.slug,
+                  timezone: workspace.settings.timezone,
+                }}
+                className="rounded-lg border p-4"
+              />
+            ) : null}
             {activities.length === 0 ? (
               <EmptyState.Root>
                 <EmptyState.Icon icon={CircleDashed} />

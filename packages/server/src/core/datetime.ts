@@ -2,11 +2,13 @@ import dayjs, { type ConfigType } from "dayjs"
 import utc from "dayjs/plugin/utc"
 import timezone from "dayjs/plugin/timezone"
 import customParseFormat from "dayjs/plugin/customParseFormat"
+import isoWeek from "dayjs/plugin/isoWeek"
 import type { WorkspaceGeneralSettings } from "./schemas"
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
 dayjs.extend(customParseFormat)
+dayjs.extend(isoWeek)
 
 export type UtcDatetime = string & { readonly _type: "UtcDatetime" }
 export type DateString = string & { readonly _type: "DateString" }
@@ -185,3 +187,42 @@ export const formatActivityTimestamp = (
 
 export const formatLongLocalDate = (instant: UtcDatetime, timezone: string) =>
   dayjs.utc(instant).tz(timezone).format("dddd, D MMMM")
+
+export type IsoWeek = { year: number; week: number }
+
+const civil = (value: string) => dayjs(value, CIVIL_DATE_FORMAT)
+
+// A week belongs to the year that holds its Thursday, so 28 Dec 2026 and 1 Jan 2027 are both in 2026-W53.
+export const isoWeekOf = (date: string): IsoWeek => {
+  const day = civil(date)
+  return { year: day.isoWeekYear(), week: day.isoWeek() }
+}
+
+export const isoWeekKey = ({ year, week }: IsoWeek) =>
+  `${year}-W${String(week).padStart(2, "0")}`
+
+export const isoWeekDays = (date: string): string[] => {
+  const monday = civil(date).startOf("isoWeek")
+  return Array.from({ length: 7 }, (_, offset) =>
+    monday.add(offset, "day").format(CIVIL_DATE_FORMAT),
+  )
+}
+
+export const formatCivilRange = (start: string, end: string) => {
+  const from = civil(start)
+  const to = civil(end)
+  if (from.isSame(to, "month")) {
+    return `${from.format("D")} – ${to.format("D MMM")}`
+  }
+  return `${from.format("D MMM")} – ${to.format("D MMM")}`
+}
+
+export const formatWeekLabel = (date: string) => {
+  const days = isoWeekDays(date)
+  const { week } = isoWeekOf(date)
+  return `Week ${week} · ${formatCivilRange(days[0], days[6])}`
+}
+
+export const formatDayLabel = (date: string) => civil(date).format("ddd D MMM")
+
+export const formatMonthName = (date: string) => civil(date).format("MMMM")

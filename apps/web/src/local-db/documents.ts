@@ -1,8 +1,32 @@
-import { parseUtc, now } from "@knight-os/server/core"
-import type { LocalDb } from "./db"
+import { now, parseUtc } from "@knight-os/server/core"
+import { journalKeyOf, type JournalRef } from "@/journal/periods"
+import { keyBetween } from "@/notebook/sort-keys"
+import { ROOT_FOLDER_ID, type LocalDb } from "./db"
+import {
+  deleteDocumentsWithin,
+  restoreDocuments,
+  type DeletedDocuments,
+} from "./document-snapshots"
+import {
+  contentUpdatesTable,
+  readContentUpdates,
+  replaceTitleInContent,
+  seedContentWithTitle,
+} from "./y-content"
 
 type DocumentsContext = {
   workspaceId: string
+}
+
+type NewDocument = {
+  folderId?: string
+  title?: string
+  journal?: JournalRef | null
+}
+
+type DocumentContent = {
+  title: string
+  excerpt: string
 }
 
 class DocumentsRepository {
@@ -10,6 +34,13 @@ class DocumentsRepository {
     private readonly db: LocalDb,
     private readonly ctx: DocumentsContext
   ) {}
+
+  private scoped(id: string) {
+    return this.db.documents
+      .where("id")
+      .equals(id)
+      .filter((row) => row.workspaceId === this.ctx.workspaceId)
+  }
 
   list() {
     return this.db.documents
@@ -24,37 +55,161 @@ class DocumentsRepository {
     return row?.workspaceId === this.ctx.workspaceId ? row : null
   }
 
-  async create() {
+  inFolder(folderId: string) {
+    return this.db.documents
+      .where("[workspaceId+folderId]")
+      .equals([this.ctx.workspaceId, folderId])
+      .toArray()
+  }
+
+  async inFolders(folderIds: string[]) {
+    const rows = await Promise.all(folderIds.map((id) => this.inFolder(id)))
+    return rows.flat()
+  }
+
+  async byJournalKey(journalKey: string) {
+    const row = await this.db.documents
+      .where("[workspaceId+journalKey]")
+      .equals([this.ctx.workspaceId, journalKey])
+      .first()
+    return row ?? null
+  }
+
+  async lastSortKey(folderId: string) {
+    const rows = await this.inFolder(folderId)
+    return rows.reduce<string | null>(
+      (last, row) => (last === null || row.sortKey > last ? row.sortKey : last),
+      null
+    )
+  }
+
+  private async insert(document: NewDocument) {
+    const folderId = document.folderId ?? ROOT_FOLDER_ID
     const timestamp = parseUtc(now())
     const id = crypto.randomUUID()
+    const journal = document.journal ?? null
     await this.db.documents.add({
       id,
       workspaceId: this.ctx.workspaceId,
-      title: "",
+      title: document.title ?? "",
+      folderId,
+      sortKey: keyBetween(await this.lastSortKey(folderId), null),
+      icon: null,
+      excerpt: "",
+      journal,
+      journalKey: journal ? journalKeyOf(journal) : null,
       createdAt: timestamp,
       updatedAt: timestamp,
     })
     return id
   }
 
+  private async seedTitle(id: string, title: string) {
+    const row = await this.byId(id)
+    if (row && title) {
+      await seedContentWithTitle(this.db, "documents", row.content, title)
+    }
+  }
+
+  async create(document: NewDocument = {}) {
+    const id = await this.db.transaction("rw", this.db.documents, () =>
+      this.insert(document)
+    )
+    await this.seedTitle(id, document.title ?? "")
+    return id
+  }
+
+  // One transaction for the lookup and the insert, so two tabs opening Today
+  // at the same moment end up on the same page.
+  async findOrCreateJournalPage(page: {
+    folderId: string
+    title: string
+    journal: JournalRef
+  }) {
+    const { id, created } = await this.db.transaction(
+      "rw",
+      this.db.documents,
+      async () => {
+        const existing = await this.byJournalKey(journalKeyOf(page.journal))
+        if (existing) return { id: existing.id, created: false }
+        return { id: await this.insert(page), created: true }
+      }
+    )
+    if (created) await this.seedTitle(id, page.title)
+    return id
+  }
+
   async syncTitle(id: string, title: string) {
-    await this.db.documents
-      .where("id")
-      .equals(id)
-      .filter(
-        (row) => row.workspaceId === this.ctx.workspaceId && row.title !== title
-      )
+    await this.scoped(id)
+      .filter((row) => row.title !== title)
       .modify({ title, updatedAt: parseUtc(now()) })
   }
 
-  async saveTitle(id: string, title: string) {
-    await this.db.documents
-      .where("id")
-      .equals(id)
-      .filter((row) => row.workspaceId === this.ctx.workspaceId)
-      .modify({ title, updatedAt: parseUtc(now()) })
+  async rename(id: string, title: string) {
+    const row = await this.byId(id)
+    if (!row) return
+    const trimmed = title.trim()
+    await replaceTitleInContent(this.db, "documents", row.content, trimmed)
+    await this.scoped(id).modify({ title: trimmed, updatedAt: parseUtc(now()) })
+  }
+
+  async saveContent(id: string, content: DocumentContent) {
+    await this.scoped(id).modify({ ...content, updatedAt: parseUtc(now()) })
+  }
+
+  async move(id: string, folderId: string, sortKey?: string) {
+    const key = sortKey ?? keyBetween(await this.lastSortKey(folderId), null)
+    await this.scoped(id).modify({
+      folderId,
+      sortKey: key,
+      updatedAt: parseUtc(now()),
+    })
+  }
+
+  async setIcon(id: string, icon: string | null) {
+    await this.scoped(id).modify({ icon, updatedAt: parseUtc(now()) })
+  }
+
+  async duplicate(id: string) {
+    const source = await this.byId(id)
+    if (!source) return null
+    const updates = contentUpdatesTable(this.db, "documents")
+    const contentUpdates = await readContentUpdates(this.db, "documents", id)
+    const siblings = (await this.inFolder(source.folderId))
+      .map((row) => row.sortKey)
+      .filter((key) => key > source.sortKey)
+      .sort()
+    const copyId = crypto.randomUUID()
+    const timestamp = parseUtc(now())
+    await this.db.transaction("rw", this.db.documents, updates, async () => {
+      await this.db.documents.add({
+        id: copyId,
+        workspaceId: this.ctx.workspaceId,
+        title: source.title,
+        folderId: source.folderId,
+        sortKey: keyBetween(source.sortKey, siblings[0] ?? null),
+        icon: source.icon,
+        excerpt: source.excerpt,
+        journal: null,
+        journalKey: null,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
+      await updates.bulkAdd(
+        contentUpdates.map((update) => ({ ...update, k: copyId }))
+      )
+    })
+    return copyId
+  }
+
+  delete(id: string): Promise<DeletedDocuments | null> {
+    return deleteDocumentsWithin(this.db, this.ctx.workspaceId, [id])
+  }
+
+  restore(snapshot: DeletedDocuments) {
+    return restoreDocuments(this.db, this.ctx.workspaceId, snapshot)
   }
 }
 
 export { DocumentsRepository }
-export type { DocumentsContext }
+export type { DocumentContent, DocumentsContext, NewDocument }

@@ -9,7 +9,7 @@ import { useActivityBridge } from "@/activities/use-activity-bridge"
 import { NotFound } from "@/components/common/NotFound"
 import { DocumentEditor } from "@/editor/components/DocumentEditor"
 import {
-  useSaveActivityTitle,
+  useSaveActivityContent,
   useSyncActivityTitle,
 } from "@/local-db/activity-mutations"
 import {
@@ -17,6 +17,8 @@ import {
   activityQuery,
   areasQuery,
 } from "@/local-db/activity-queries"
+import { EntityDocumentsPanel } from "@/notebook/components/EntityDocuments"
+import { useMentionBridge } from "@/notebook/components/use-mention-bridge"
 import { Page } from "@layout/content/Page"
 import {
   ActivityOriginLink,
@@ -57,8 +59,13 @@ function ActivityPage() {
   const { data: found } = useSuspenseQuery(
     activityQuery(workspace.id, activityId)
   )
-  const saveTitle = useSaveActivityTitle(workspace.id, activityId)
+  const saveContent = useSaveActivityContent(workspace.id, activityId)
   const syncTitle = useSyncActivityTitle(workspace.id, activityId)
+  const mentions = useMentionBridge({
+    id: workspace.id,
+    slug: workspace.slug,
+    timezone: workspace.settings.timezone,
+  })
   const activities = useActivityBridge(workspace, {
     kind: "activity",
     activityId,
@@ -68,6 +75,11 @@ function ActivityPage() {
   const propertiesWorkspace = {
     id: workspace.id,
     name: workspace.name,
+    slug: workspace.slug,
+    timezone: workspace.settings.timezone,
+  }
+  const documentsWorkspace = {
+    id: workspace.id,
     slug: workspace.slug,
     timezone: workspace.settings.timezone,
   }
@@ -85,7 +97,7 @@ function ActivityPage() {
     <Page.Layout>
       <Page.ScrollArea>
         <div className="mx-auto flex w-full max-w-5xl gap-10 px-4 pt-8 md:px-16 md:pt-14">
-          <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-1 flex-col gap-10 pb-16">
             <div className="lg:hidden">
               <ActivityOriginLink
                 activity={activity}
@@ -101,9 +113,10 @@ function ActivityPage() {
                   : undefined
               }
               blockLink={blockLink}
-              onContentChange={saveTitle.mutate}
+              onContentChange={saveContent.mutate}
               onLoaded={syncTitle.mutate}
               activities={activities}
+              mentions={mentions}
               titleAccessory={
                 <div className="lg:hidden">
                   <ActivityPropertyChips
@@ -113,14 +126,24 @@ function ActivityPage() {
                 </div>
               }
             />
+            <EntityDocumentsPanel
+              owner={{ kind: "activity", id: activityId }}
+              workspace={documentsWorkspace}
+              className="border-t pt-4 lg:hidden"
+            />
           </div>
           <aside
             aria-label="Activity properties"
-            className="w-64 shrink-0 max-lg:hidden lg:sticky lg:top-14 lg:self-start"
+            className="flex w-64 shrink-0 flex-col gap-6 pb-16 max-lg:hidden lg:sticky lg:top-14 lg:max-h-[calc(100dvh-7rem)] lg:self-start lg:overflow-y-auto"
           >
             <ActivityProperties
               activity={activity}
               workspace={propertiesWorkspace}
+            />
+            <EntityDocumentsPanel
+              owner={{ kind: "activity", id: activityId }}
+              workspace={documentsWorkspace}
+              className="border-t pt-4"
             />
           </aside>
         </div>

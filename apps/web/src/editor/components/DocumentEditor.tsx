@@ -5,11 +5,15 @@ import { useStore } from "jotai"
 import { toast } from "sonner"
 import type * as Y from "yjs"
 import type { ActivityBridge } from "../activity-bridge"
+import type { MentionBridge } from "../mention-bridge"
+import type { EditorContent } from "../mention-index"
 import { activeLinkHref, isInTitle } from "../commands"
 import { readUi, setHoverPos } from "../editor-ui"
 import { mountEditor } from "../mount-editor"
 import { BlockHandle } from "./BlockHandle"
 import { createEditorAtoms } from "./editor-atoms"
+import { MentionMenu } from "./MentionMenu"
+import { createMentionHoverAtom, MentionPreview } from "./MentionPreview"
 import { MobileEditorBar } from "./MobileEditorBar"
 import { SelectionToolbar } from "./SelectionToolbar"
 import { SlashMenu } from "./SlashMenu"
@@ -18,9 +22,10 @@ type DocumentEditorProps = {
   ydoc: Y.Doc
   focusBlockId?: string
   blockLink: (blockId: string) => string
-  onContentChange: (title: string) => void
+  onContentChange: (content: EditorContent) => void
   onLoaded: (title: string) => void
   activities: ActivityBridge
+  mentions?: MentionBridge
   titleAccessory?: React.ReactNode
 }
 
@@ -31,6 +36,7 @@ function DocumentEditor({
   onContentChange,
   onLoaded,
   activities,
+  mentions,
   titleAccessory,
 }: DocumentEditorProps) {
   const store = useStore()
@@ -38,6 +44,8 @@ function DocumentEditor({
   const coarsePointer = useMediaQuery("(pointer: coarse)", { noSsr: true })
   // The atoms hold this editor's UI state, so each instance needs its own set.
   const atoms = useMemo(() => createEditorAtoms(), [])
+  const mentionHoverAtom = useMemo(() => createMentionHoverAtom(), [])
+  const mentionMenuId = useId()
   const hasTitleAccessory = titleAccessory !== undefined
   // ProseMirror keeps the widget only while it is handed the same DOM node.
   const titleAccessoryElement = useMemo(
@@ -57,6 +65,7 @@ function DocumentEditor({
         onContentChange,
         onLoaded,
         activities,
+        mentions,
         onError: (message) => toast.error(message),
         onState: (snapshot) => store.set(atoms.snapshot, snapshot),
         onRequestLink: () => {
@@ -76,6 +85,7 @@ function DocumentEditor({
       onContentChange,
       onLoaded,
       activities,
+      mentions,
       store,
       atoms,
     ]
@@ -89,12 +99,41 @@ function DocumentEditor({
   }
 
   return (
-    <div className="relative" onMouseLeave={clearHover}>
+    <div
+      className="relative"
+      onMouseLeave={() => {
+        clearHover()
+        store.set(mentionHoverAtom, null)
+      }}
+      onMouseOver={(event) => {
+        const chip =
+          event.target instanceof Element
+            ? event.target.closest("[data-mention-id]")
+            : null
+        const current = store.get(mentionHoverAtom)
+        if (chip instanceof HTMLElement && chip.dataset.mentionId) {
+          if (current?.anchor !== chip) {
+            store.set(mentionHoverAtom, {
+              documentId: chip.dataset.mentionId,
+              anchor: chip,
+            })
+          }
+        } else if (current) {
+          store.set(mentionHoverAtom, null)
+        }
+      }}
+    >
       <div ref={mountRef} />
       {titleAccessoryElement
         ? createPortal(titleAccessory, titleAccessoryElement)
         : null}
       <SlashMenu atoms={atoms} menuId={slashMenuId} />
+      {mentions ? (
+        <>
+          <MentionMenu atoms={atoms} bridge={mentions} menuId={mentionMenuId} />
+          <MentionPreview hoverAtom={mentionHoverAtom} bridge={mentions} />
+        </>
+      ) : null}
       {coarsePointer ? (
         <MobileEditorBar
           atoms={atoms}

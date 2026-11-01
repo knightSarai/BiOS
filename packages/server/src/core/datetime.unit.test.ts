@@ -7,6 +7,12 @@ import {
   formatWorkspaceDate,
   formatCivilDate,
   formatDate,
+  formatDayLabel,
+  formatMonthName,
+  formatWeekLabel,
+  isoWeekDays,
+  isoWeekKey,
+  isoWeekOf,
   isCivilDate,
   parseCivilDate,
   oneMillisecondAfter,
@@ -447,5 +453,40 @@ describe("formatWorkspaceDate", () => {
     })
 
     expect(result).toBe("04/05/2026")
+  })
+})
+
+describe("ISO weeks", () => {
+  it("puts a week that spans New Year in the year holding its Thursday", () => {
+    expect(isoWeekOf("2026-12-28")).toEqual({ year: 2026, week: 53 })
+    expect(isoWeekOf("2027-01-03")).toEqual({ year: 2026, week: 53 })
+    expect(isoWeekOf("2027-01-04")).toEqual({ year: 2027, week: 1 })
+    expect(isoWeekOf("2025-12-29")).toEqual({ year: 2026, week: 1 })
+  })
+
+  it("keys weeks with a padded number", () => {
+    expect(isoWeekKey({ year: 2026, week: 4 })).toBe("2026-W04")
+  })
+
+  it("lists Monday to Sunday", () => {
+    expect(isoWeekDays("2026-11-01")).toEqual([
+      "2026-10-26",
+      "2026-10-27",
+      "2026-10-28",
+      "2026-10-29",
+      "2026-10-30",
+      "2026-10-31",
+      "2026-11-01",
+    ])
+  })
+
+  it("labels weeks within and across months", () => {
+    expect(formatWeekLabel("2026-11-01")).toBe("Week 44 · 26 Oct – 1 Nov")
+    expect(formatWeekLabel("2026-11-04")).toBe("Week 45 · 2 – 8 Nov")
+  })
+
+  it("labels days and months", () => {
+    expect(formatDayLabel("2026-11-01")).toBe("Sun 1 Nov")
+    expect(formatMonthName("2026-11-01")).toBe("November")
   })
 })

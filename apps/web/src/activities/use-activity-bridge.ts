@@ -16,6 +16,7 @@ type BridgeWorkspace = {
 type BridgeSource =
   | { kind: "document"; documentId: string }
   | { kind: "activity"; activityId: string }
+  | { kind: "goal"; goalId: string }
 
 const useActivityBridge = (
   workspace: BridgeWorkspace,
@@ -24,7 +25,11 @@ const useActivityBridge = (
   const queryClient = useQueryClient()
   const router = useRouter()
   const sourceId =
-    source.kind === "document" ? source.documentId : source.activityId
+    source.kind === "document"
+      ? source.documentId
+      : source.kind === "activity"
+        ? source.activityId
+        : source.goalId
 
   // The editor mounts once per bridge, so a new bridge each render would remount it.
   return useMemo(
@@ -32,10 +37,16 @@ const useActivityBridge = (
       createActivityBridge({
         queryClient,
         workspace: { id: workspace.id, name: workspace.name },
-        origin: (blockId) =>
-          source.kind === "document"
-            ? { kind: "document", documentId: sourceId, blockId }
-            : { kind: "activity", activityId: sourceId, blockId },
+        origin: (blockId) => {
+          if (source.kind === "document") {
+            return { kind: "document", documentId: sourceId, blockId }
+          }
+          if (source.kind === "activity") {
+            return { kind: "activity", activityId: sourceId, blockId }
+          }
+          return null
+        },
+        goalId: source.kind === "goal" ? sourceId : null,
         areaId: async () => {
           if (source.kind === "activity") {
             const parent = await activitiesRepository(workspace.id).byId(

@@ -30,6 +30,8 @@ import { Route as AuthenticatedWorkspaceAppIndexRouteImport } from './routes/_au
 import { Route as AuthenticatedWorkspaceAppSplatRouteImport } from './routes/_authenticated/$workspace/_app/$'
 import { Route as AuthenticatedWorkspaceAppActivitiesRouteRouteImport } from './routes/_authenticated/$workspace/_app/activities/route'
 import { Route as AuthenticatedWorkspaceAppDocumentsRouteRouteImport } from './routes/_authenticated/$workspace/_app/documents/route'
+import { Route as AuthenticatedWorkspaceAppGoalsRouteRouteImport } from './routes/_authenticated/$workspace/_app/goals/route'
+import { Route as AuthenticatedWorkspaceAppNotebookRouteRouteImport } from './routes/_authenticated/$workspace/_app/notebook/route'
 import { Route as AuthenticatedWorkspaceAppTodayRouteImport } from './routes/_authenticated/$workspace/_app/today'
 import { Route as AuthenticatedWorkspaceSettingsIndexRouteImport } from './routes/_authenticated/$workspace/settings/index'
 import { Route as AuthenticatedWorkspaceSettingsGeneralRouteImport } from './routes/_authenticated/$workspace/settings/general'
@@ -42,6 +44,10 @@ import { Route as AuthenticatedWorkspaceAppActivitiesIndexRouteImport } from './
 import { Route as AuthenticatedWorkspaceAppActivitiesActivityIdRouteImport } from './routes/_authenticated/$workspace/_app/activities/$activityId'
 import { Route as AuthenticatedWorkspaceAppDocumentsIndexRouteImport } from './routes/_authenticated/$workspace/_app/documents/index'
 import { Route as AuthenticatedWorkspaceAppDocumentsDocumentIdRouteImport } from './routes/_authenticated/$workspace/_app/documents/$documentId'
+import { Route as AuthenticatedWorkspaceAppGoalsIndexRouteImport } from './routes/_authenticated/$workspace/_app/goals/index'
+import { Route as AuthenticatedWorkspaceAppGoalsGoalIdRouteImport } from './routes/_authenticated/$workspace/_app/goals/$goalId'
+import { Route as AuthenticatedWorkspaceAppNotebookIndexRouteImport } from './routes/_authenticated/$workspace/_app/notebook/index'
+import { Route as AuthenticatedWorkspaceAppNotebookFoldersFolderIdRouteImport } from './routes/_authenticated/$workspace/_app/notebook/folders/$folderId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -156,6 +162,18 @@ const AuthenticatedWorkspaceAppDocumentsRouteRoute =
     path: '/documents',
     getParentRoute: () => AuthenticatedWorkspaceAppRouteRoute,
   } as any)
+const AuthenticatedWorkspaceAppGoalsRouteRoute =
+  AuthenticatedWorkspaceAppGoalsRouteRouteImport.update({
+    id: '/goals',
+    path: '/goals',
+    getParentRoute: () => AuthenticatedWorkspaceAppRouteRoute,
+  } as any)
+const AuthenticatedWorkspaceAppNotebookRouteRoute =
+  AuthenticatedWorkspaceAppNotebookRouteRouteImport.update({
+    id: '/notebook',
+    path: '/notebook',
+    getParentRoute: () => AuthenticatedWorkspaceAppRouteRoute,
+  } as any)
 const AuthenticatedWorkspaceAppTodayRoute =
   AuthenticatedWorkspaceAppTodayRouteImport.update({
     id: '/today',
@@ -228,6 +246,30 @@ const AuthenticatedWorkspaceAppDocumentsDocumentIdRoute =
     path: '/$documentId',
     getParentRoute: () => AuthenticatedWorkspaceAppDocumentsRouteRoute,
   } as any)
+const AuthenticatedWorkspaceAppGoalsIndexRoute =
+  AuthenticatedWorkspaceAppGoalsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedWorkspaceAppGoalsRouteRoute,
+  } as any)
+const AuthenticatedWorkspaceAppGoalsGoalIdRoute =
+  AuthenticatedWorkspaceAppGoalsGoalIdRouteImport.update({
+    id: '/$goalId',
+    path: '/$goalId',
+    getParentRoute: () => AuthenticatedWorkspaceAppGoalsRouteRoute,
+  } as any)
+const AuthenticatedWorkspaceAppNotebookIndexRoute =
+  AuthenticatedWorkspaceAppNotebookIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedWorkspaceAppNotebookRouteRoute,
+  } as any)
+const AuthenticatedWorkspaceAppNotebookFoldersFolderIdRoute =
+  AuthenticatedWorkspaceAppNotebookFoldersFolderIdRouteImport.update({
+    id: '/folders/$folderId',
+    path: '/folders/$folderId',
+    getParentRoute: () => AuthenticatedWorkspaceAppNotebookRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -247,6 +289,8 @@ export interface FileRoutesByFullPath {
   '/admin/': typeof AuthenticatedAdminIndexRoute
   '/$workspace/activities': typeof AuthenticatedWorkspaceAppActivitiesRouteRouteWithChildren
   '/$workspace/documents': typeof AuthenticatedWorkspaceAppDocumentsRouteRouteWithChildren
+  '/$workspace/goals': typeof AuthenticatedWorkspaceAppGoalsRouteRouteWithChildren
+  '/$workspace/notebook': typeof AuthenticatedWorkspaceAppNotebookRouteRouteWithChildren
   '/$workspace/$': typeof AuthenticatedWorkspaceAppSplatRoute
   '/$workspace/today': typeof AuthenticatedWorkspaceAppTodayRoute
   '/$workspace/settings/general': typeof AuthenticatedWorkspaceSettingsGeneralRoute
@@ -259,8 +303,12 @@ export interface FileRoutesByFullPath {
   '/admin/workspaces/': typeof AuthenticatedAdminWorkspacesIndexRoute
   '/$workspace/activities/$activityId': typeof AuthenticatedWorkspaceAppActivitiesActivityIdRoute
   '/$workspace/documents/$documentId': typeof AuthenticatedWorkspaceAppDocumentsDocumentIdRoute
+  '/$workspace/goals/$goalId': typeof AuthenticatedWorkspaceAppGoalsGoalIdRoute
   '/$workspace/activities/': typeof AuthenticatedWorkspaceAppActivitiesIndexRoute
   '/$workspace/documents/': typeof AuthenticatedWorkspaceAppDocumentsIndexRoute
+  '/$workspace/goals/': typeof AuthenticatedWorkspaceAppGoalsIndexRoute
+  '/$workspace/notebook/': typeof AuthenticatedWorkspaceAppNotebookIndexRoute
+  '/$workspace/notebook/folders/$folderId': typeof AuthenticatedWorkspaceAppNotebookFoldersFolderIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -285,8 +333,12 @@ export interface FileRoutesByTo {
   '/admin/workspaces': typeof AuthenticatedAdminWorkspacesIndexRoute
   '/$workspace/activities/$activityId': typeof AuthenticatedWorkspaceAppActivitiesActivityIdRoute
   '/$workspace/documents/$documentId': typeof AuthenticatedWorkspaceAppDocumentsDocumentIdRoute
+  '/$workspace/goals/$goalId': typeof AuthenticatedWorkspaceAppGoalsGoalIdRoute
   '/$workspace/activities': typeof AuthenticatedWorkspaceAppActivitiesIndexRoute
   '/$workspace/documents': typeof AuthenticatedWorkspaceAppDocumentsIndexRoute
+  '/$workspace/goals': typeof AuthenticatedWorkspaceAppGoalsIndexRoute
+  '/$workspace/notebook': typeof AuthenticatedWorkspaceAppNotebookIndexRoute
+  '/$workspace/notebook/folders/$folderId': typeof AuthenticatedWorkspaceAppNotebookFoldersFolderIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -309,6 +361,8 @@ export interface FileRoutesById {
   '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
   '/_authenticated/$workspace/_app/activities': typeof AuthenticatedWorkspaceAppActivitiesRouteRouteWithChildren
   '/_authenticated/$workspace/_app/documents': typeof AuthenticatedWorkspaceAppDocumentsRouteRouteWithChildren
+  '/_authenticated/$workspace/_app/goals': typeof AuthenticatedWorkspaceAppGoalsRouteRouteWithChildren
+  '/_authenticated/$workspace/_app/notebook': typeof AuthenticatedWorkspaceAppNotebookRouteRouteWithChildren
   '/_authenticated/$workspace/_app/$': typeof AuthenticatedWorkspaceAppSplatRoute
   '/_authenticated/$workspace/_app/today': typeof AuthenticatedWorkspaceAppTodayRoute
   '/_authenticated/$workspace/settings/general': typeof AuthenticatedWorkspaceSettingsGeneralRoute
@@ -321,8 +375,12 @@ export interface FileRoutesById {
   '/_authenticated/admin/workspaces/': typeof AuthenticatedAdminWorkspacesIndexRoute
   '/_authenticated/$workspace/_app/activities/$activityId': typeof AuthenticatedWorkspaceAppActivitiesActivityIdRoute
   '/_authenticated/$workspace/_app/documents/$documentId': typeof AuthenticatedWorkspaceAppDocumentsDocumentIdRoute
+  '/_authenticated/$workspace/_app/goals/$goalId': typeof AuthenticatedWorkspaceAppGoalsGoalIdRoute
   '/_authenticated/$workspace/_app/activities/': typeof AuthenticatedWorkspaceAppActivitiesIndexRoute
   '/_authenticated/$workspace/_app/documents/': typeof AuthenticatedWorkspaceAppDocumentsIndexRoute
+  '/_authenticated/$workspace/_app/goals/': typeof AuthenticatedWorkspaceAppGoalsIndexRoute
+  '/_authenticated/$workspace/_app/notebook/': typeof AuthenticatedWorkspaceAppNotebookIndexRoute
+  '/_authenticated/$workspace/_app/notebook/folders/$folderId': typeof AuthenticatedWorkspaceAppNotebookFoldersFolderIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -344,6 +402,8 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/$workspace/activities'
     | '/$workspace/documents'
+    | '/$workspace/goals'
+    | '/$workspace/notebook'
     | '/$workspace/$'
     | '/$workspace/today'
     | '/$workspace/settings/general'
@@ -356,8 +416,12 @@ export interface FileRouteTypes {
     | '/admin/workspaces/'
     | '/$workspace/activities/$activityId'
     | '/$workspace/documents/$documentId'
+    | '/$workspace/goals/$goalId'
     | '/$workspace/activities/'
     | '/$workspace/documents/'
+    | '/$workspace/goals/'
+    | '/$workspace/notebook/'
+    | '/$workspace/notebook/folders/$folderId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -382,8 +446,12 @@ export interface FileRouteTypes {
     | '/admin/workspaces'
     | '/$workspace/activities/$activityId'
     | '/$workspace/documents/$documentId'
+    | '/$workspace/goals/$goalId'
     | '/$workspace/activities'
     | '/$workspace/documents'
+    | '/$workspace/goals'
+    | '/$workspace/notebook'
+    | '/$workspace/notebook/folders/$folderId'
   id:
     | '__root__'
     | '/'
@@ -405,6 +473,8 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/'
     | '/_authenticated/$workspace/_app/activities'
     | '/_authenticated/$workspace/_app/documents'
+    | '/_authenticated/$workspace/_app/goals'
+    | '/_authenticated/$workspace/_app/notebook'
     | '/_authenticated/$workspace/_app/$'
     | '/_authenticated/$workspace/_app/today'
     | '/_authenticated/$workspace/settings/general'
@@ -417,8 +487,12 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/workspaces/'
     | '/_authenticated/$workspace/_app/activities/$activityId'
     | '/_authenticated/$workspace/_app/documents/$documentId'
+    | '/_authenticated/$workspace/_app/goals/$goalId'
     | '/_authenticated/$workspace/_app/activities/'
     | '/_authenticated/$workspace/_app/documents/'
+    | '/_authenticated/$workspace/_app/goals/'
+    | '/_authenticated/$workspace/_app/notebook/'
+    | '/_authenticated/$workspace/_app/notebook/folders/$folderId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -581,6 +655,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedWorkspaceAppDocumentsRouteRouteImport
       parentRoute: typeof AuthenticatedWorkspaceAppRouteRoute
     }
+    '/_authenticated/$workspace/_app/goals': {
+      id: '/_authenticated/$workspace/_app/goals'
+      path: '/goals'
+      fullPath: '/$workspace/goals'
+      preLoaderRoute: typeof AuthenticatedWorkspaceAppGoalsRouteRouteImport
+      parentRoute: typeof AuthenticatedWorkspaceAppRouteRoute
+    }
+    '/_authenticated/$workspace/_app/notebook': {
+      id: '/_authenticated/$workspace/_app/notebook'
+      path: '/notebook'
+      fullPath: '/$workspace/notebook'
+      preLoaderRoute: typeof AuthenticatedWorkspaceAppNotebookRouteRouteImport
+      parentRoute: typeof AuthenticatedWorkspaceAppRouteRoute
+    }
     '/_authenticated/$workspace/_app/today': {
       id: '/_authenticated/$workspace/_app/today'
       path: '/today'
@@ -665,6 +753,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedWorkspaceAppDocumentsDocumentIdRouteImport
       parentRoute: typeof AuthenticatedWorkspaceAppDocumentsRouteRoute
     }
+    '/_authenticated/$workspace/_app/goals/': {
+      id: '/_authenticated/$workspace/_app/goals/'
+      path: '/'
+      fullPath: '/$workspace/goals/'
+      preLoaderRoute: typeof AuthenticatedWorkspaceAppGoalsIndexRouteImport
+      parentRoute: typeof AuthenticatedWorkspaceAppGoalsRouteRoute
+    }
+    '/_authenticated/$workspace/_app/goals/$goalId': {
+      id: '/_authenticated/$workspace/_app/goals/$goalId'
+      path: '/$goalId'
+      fullPath: '/$workspace/goals/$goalId'
+      preLoaderRoute: typeof AuthenticatedWorkspaceAppGoalsGoalIdRouteImport
+      parentRoute: typeof AuthenticatedWorkspaceAppGoalsRouteRoute
+    }
+    '/_authenticated/$workspace/_app/notebook/': {
+      id: '/_authenticated/$workspace/_app/notebook/'
+      path: '/'
+      fullPath: '/$workspace/notebook/'
+      preLoaderRoute: typeof AuthenticatedWorkspaceAppNotebookIndexRouteImport
+      parentRoute: typeof AuthenticatedWorkspaceAppNotebookRouteRoute
+    }
+    '/_authenticated/$workspace/_app/notebook/folders/$folderId': {
+      id: '/_authenticated/$workspace/_app/notebook/folders/$folderId'
+      path: '/folders/$folderId'
+      fullPath: '/$workspace/notebook/folders/$folderId'
+      preLoaderRoute: typeof AuthenticatedWorkspaceAppNotebookFoldersFolderIdRouteImport
+      parentRoute: typeof AuthenticatedWorkspaceAppNotebookRouteRoute
+    }
   }
 }
 
@@ -704,9 +820,47 @@ const AuthenticatedWorkspaceAppDocumentsRouteRouteWithChildren =
     AuthenticatedWorkspaceAppDocumentsRouteRouteChildren,
   )
 
+interface AuthenticatedWorkspaceAppGoalsRouteRouteChildren {
+  AuthenticatedWorkspaceAppGoalsGoalIdRoute: typeof AuthenticatedWorkspaceAppGoalsGoalIdRoute
+  AuthenticatedWorkspaceAppGoalsIndexRoute: typeof AuthenticatedWorkspaceAppGoalsIndexRoute
+}
+
+const AuthenticatedWorkspaceAppGoalsRouteRouteChildren: AuthenticatedWorkspaceAppGoalsRouteRouteChildren =
+  {
+    AuthenticatedWorkspaceAppGoalsGoalIdRoute:
+      AuthenticatedWorkspaceAppGoalsGoalIdRoute,
+    AuthenticatedWorkspaceAppGoalsIndexRoute:
+      AuthenticatedWorkspaceAppGoalsIndexRoute,
+  }
+
+const AuthenticatedWorkspaceAppGoalsRouteRouteWithChildren =
+  AuthenticatedWorkspaceAppGoalsRouteRoute._addFileChildren(
+    AuthenticatedWorkspaceAppGoalsRouteRouteChildren,
+  )
+
+interface AuthenticatedWorkspaceAppNotebookRouteRouteChildren {
+  AuthenticatedWorkspaceAppNotebookIndexRoute: typeof AuthenticatedWorkspaceAppNotebookIndexRoute
+  AuthenticatedWorkspaceAppNotebookFoldersFolderIdRoute: typeof AuthenticatedWorkspaceAppNotebookFoldersFolderIdRoute
+}
+
+const AuthenticatedWorkspaceAppNotebookRouteRouteChildren: AuthenticatedWorkspaceAppNotebookRouteRouteChildren =
+  {
+    AuthenticatedWorkspaceAppNotebookIndexRoute:
+      AuthenticatedWorkspaceAppNotebookIndexRoute,
+    AuthenticatedWorkspaceAppNotebookFoldersFolderIdRoute:
+      AuthenticatedWorkspaceAppNotebookFoldersFolderIdRoute,
+  }
+
+const AuthenticatedWorkspaceAppNotebookRouteRouteWithChildren =
+  AuthenticatedWorkspaceAppNotebookRouteRoute._addFileChildren(
+    AuthenticatedWorkspaceAppNotebookRouteRouteChildren,
+  )
+
 interface AuthenticatedWorkspaceAppRouteRouteChildren {
   AuthenticatedWorkspaceAppActivitiesRouteRoute: typeof AuthenticatedWorkspaceAppActivitiesRouteRouteWithChildren
   AuthenticatedWorkspaceAppDocumentsRouteRoute: typeof AuthenticatedWorkspaceAppDocumentsRouteRouteWithChildren
+  AuthenticatedWorkspaceAppGoalsRouteRoute: typeof AuthenticatedWorkspaceAppGoalsRouteRouteWithChildren
+  AuthenticatedWorkspaceAppNotebookRouteRoute: typeof AuthenticatedWorkspaceAppNotebookRouteRouteWithChildren
   AuthenticatedWorkspaceAppSplatRoute: typeof AuthenticatedWorkspaceAppSplatRoute
   AuthenticatedWorkspaceAppTodayRoute: typeof AuthenticatedWorkspaceAppTodayRoute
   AuthenticatedWorkspaceAppIndexRoute: typeof AuthenticatedWorkspaceAppIndexRoute
@@ -718,6 +872,10 @@ const AuthenticatedWorkspaceAppRouteRouteChildren: AuthenticatedWorkspaceAppRout
       AuthenticatedWorkspaceAppActivitiesRouteRouteWithChildren,
     AuthenticatedWorkspaceAppDocumentsRouteRoute:
       AuthenticatedWorkspaceAppDocumentsRouteRouteWithChildren,
+    AuthenticatedWorkspaceAppGoalsRouteRoute:
+      AuthenticatedWorkspaceAppGoalsRouteRouteWithChildren,
+    AuthenticatedWorkspaceAppNotebookRouteRoute:
+      AuthenticatedWorkspaceAppNotebookRouteRouteWithChildren,
     AuthenticatedWorkspaceAppSplatRoute: AuthenticatedWorkspaceAppSplatRoute,
     AuthenticatedWorkspaceAppTodayRoute: AuthenticatedWorkspaceAppTodayRoute,
     AuthenticatedWorkspaceAppIndexRoute: AuthenticatedWorkspaceAppIndexRoute,

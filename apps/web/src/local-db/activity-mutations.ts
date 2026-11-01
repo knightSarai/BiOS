@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import type { ActivityStatus } from "@/activities/status"
+import type { EditorContent } from "@/editor/mention-index"
 import type { NewActivity } from "./activities"
 import {
   activitiesRepository,
@@ -7,11 +8,26 @@ import {
   areasRepository,
 } from "./activity-queries"
 import type { NewArea } from "./areas"
+import { notebookContext, notebookKeys } from "./notebook-queries"
+import { syncEntityFolder } from "@/notebook/use-cases"
+
+const syncActivityFolder = (workspaceId: string, activityId: string) =>
+  syncEntityFolder(notebookContext(workspaceId), {
+    kind: "activity",
+    id: activityId,
+  })
 
 const useInvalidateActivities = (workspaceId: string) => {
   const queryClient = useQueryClient()
   return () =>
-    queryClient.invalidateQueries({ queryKey: activityKeys.all(workspaceId) })
+    Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: activityKeys.all(workspaceId),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: notebookKeys.all(workspaceId),
+      }),
+    ])
 }
 
 const useInvalidateActivityTitle = (workspaceId: string, id: string) => {
@@ -26,6 +42,9 @@ const useInvalidateActivityTitle = (workspaceId: string, id: string) => {
       }),
       queryClient.invalidateQueries({
         queryKey: [...activityKeys.all(workspaceId), "list"],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: notebookKeys.all(workspaceId),
       }),
     ])
 }
@@ -64,18 +83,26 @@ const useMoveActivityToArea = (workspaceId: string) => {
   const invalidate = useInvalidateActivities(workspaceId)
   return useMutation({
     networkMode: "always",
-    mutationFn: ({ id, areaId }: { id: string; areaId: string }) =>
-      activitiesRepository(workspaceId).moveToArea(id, areaId),
+    mutationFn: async ({ id, areaId }: { id: string; areaId: string }) => {
+      await activitiesRepository(workspaceId).moveToArea(id, areaId)
+      await syncActivityFolder(workspaceId, id)
+    },
     onSuccess: invalidate,
   })
 }
 
-const useSaveActivityTitle = (workspaceId: string, id: string) => {
+const useSaveActivityContent = (workspaceId: string, id: string) => {
   const invalidate = useInvalidateActivityTitle(workspaceId, id)
   return useMutation({
     networkMode: "always",
-    mutationFn: (title: string) =>
-      activitiesRepository(workspaceId).saveTitle(id, title),
+    mutationFn: async (content: EditorContent) => {
+      await activitiesRepository(workspaceId).saveTitle(id, content.title)
+      await notebookContext(workspaceId).mentions.replaceForSource(
+        `activity:${id}`,
+        content.mentions
+      )
+      await syncActivityFolder(workspaceId, id)
+    },
     onSuccess: invalidate,
   })
 }
@@ -84,8 +111,10 @@ const useSyncActivityTitle = (workspaceId: string, id: string) => {
   const invalidate = useInvalidateActivityTitle(workspaceId, id)
   return useMutation({
     networkMode: "always",
-    mutationFn: (title: string) =>
-      activitiesRepository(workspaceId).syncTitle(id, title),
+    mutationFn: async (title: string) => {
+      await activitiesRepository(workspaceId).syncTitle(id, title)
+      await syncActivityFolder(workspaceId, id)
+    },
     onSuccess: invalidate,
   })
 }
@@ -95,6 +124,16 @@ const useCreateArea = (workspaceId: string) => {
   return useMutation({
     networkMode: "always",
     mutationFn: (area: NewArea) => areasRepository(workspaceId).create(area),
+    onSuccess: invalidate,
+  })
+}
+
+const useSetActivityGoal = (workspaceId: string) => {
+  const invalidate = useInvalidateActivities(workspaceId)
+  return useMutation({
+    networkMode: "always",
+    mutationFn: ({ id, goalId }: { id: string; goalId: string | null }) =>
+      activitiesRepository(workspaceId).setGoal(id, goalId),
     onSuccess: invalidate,
   })
 }
@@ -120,7 +159,8 @@ export {
   useDeleteActivity,
   useCreateArea,
   useMoveActivityToArea,
-  useSaveActivityTitle,
+  useSaveActivityContent,
+  useSetActivityGoal,
   useSetActivityStatus,
   useSyncActivityTitle,
   useToggleActivityDone,

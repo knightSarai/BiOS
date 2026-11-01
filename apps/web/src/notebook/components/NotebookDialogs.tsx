@@ -1,4 +1,3 @@
-import { AttachToPopover } from "./AttachToPopover"
 import { DeleteNotebookItemDialog } from "./DeleteNotebookItemDialog"
 import { IconPicker } from "./IconPicker"
 import { MovePopover } from "./MovePopover"
@@ -10,7 +9,6 @@ function NotebookDialogs({ workspace }: { workspace: NotebookWorkspace }) {
     <>
       <MovePopover workspace={workspace} />
       <DeleteNotebookItemDialog workspace={workspace} />
-      <AttachToPopover workspace={workspace} />
       <IconPicker workspace={workspace} />
       <RowActionSheet workspace={workspace} />
     </>

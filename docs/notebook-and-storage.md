@@ -241,8 +241,8 @@ Taken from a look at Notion's sidebar on 2026-11-01. *All decided 2026-11-01.*
 | --- | --- | --- |
 | N18 | Row controls | ⋯ shows on hover; folders also show +. Documents can't contain anything, so they have no chevron and no +. Right-click opens the ⋯ menu. On a phone, a long press does. |
 | N19 | What + creates | A document in that folder. Folders come from the ⋯ menu. |
-| N20 | The ⋯ menu | A shared core (Open in peek, Open in new tab, Rename, Move to, Copy link, Duplicate, Trash) plus items per type: Attach to… on documents; New document and New folder on folders. A folder an entity uses adds "Open HLT-32 Book sparring". The footer shows the last edit. (Revised 2026-11-01: entities are no longer tree rows.) |
-| N21 | Move to | A popover with search, suggestions and a tree you open with chevrons. It never asks about the old home: the old home stays attached, and a toast offers Detach and Undo. |
+| N20 | The ⋯ menu | A shared core (Open in peek, Open in new tab, Rename, Move to, Copy link, Duplicate, Trash) plus items per type: New document and New folder on folders. Documents are attached from the activity, goal or area side only; a document lists what it is attached to, read-only (revised 2026-11-01). A folder an entity uses adds "Open HLT-32 Book sparring". The footer shows the last edit. (Revised 2026-11-01: entities are no longer tree rows.) |
+| N21 | Move to | A popover with search, suggestions and a tree you open with chevrons. It never asks about the old home: the old home stays attached, and a toast says so and offers Undo. The leftover link is removed from the activity, goal or area side (revised 2026-11-01). |
 | N22 | Drag in the tree | Documents and folders drag. Dropping onto a row moves inside it, and dropping between rows reorders. Dragging a folder an entity uses makes that placement yours (E3). Dropping on an activity's Documents section attaches the document, and dropping into a document's text inserts a mention. |
 | N23 | Order | Folders use manual order. Activities groups sort by status and Journal sorts by date. This settles N12. |
 | N24 | Search in the page menu | None. Mod K holds the commands. |

@@ -1,12 +1,8 @@
 import { useQuery } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
-import { useSetAtom } from "jotai"
-import { Paperclip, Plus, X } from "lucide-react"
 import { formatActivityTimestamp, now, parseUtc } from "@knight-os/server/core"
 import { documentDetailsQuery } from "@/local-db/notebook-queries"
-import { useDetachDocument } from "@/local-db/notebook-mutations"
 import { cn } from "@/lib/utils"
-import { attachingAtom } from "./atoms"
 import { DocumentIcon } from "./ItemIcon"
 import { OwnerIcon, ownerSubtitle, ownerTitle } from "./OwnerBadge"
 import { OwnerLink } from "./OwnerLink"
@@ -29,8 +25,6 @@ function DocumentDetails({
   compact,
 }: DocumentDetailsProps) {
   const { data } = useQuery(documentDetailsQuery(workspace.id, documentId))
-  const setAttaching = useSetAtom(attachingAtom)
-  const detach = useDetachDocument(workspace.id)
   if (!data) return null
   const current = parseUtc(now())
 
@@ -98,70 +92,33 @@ function DocumentDetails({
         </section>
       ) : null}
 
-      {data.attachedTo.length === 0 ? (
-        <button
-          type="button"
-          onClick={(event) =>
-            setAttaching({ documentId, anchor: event.currentTarget })
-          }
-          className="-mx-2 flex min-h-8 items-center gap-2 self-start rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground max-md:min-h-11"
-        >
-          <Paperclip aria-hidden className="size-3.5" />
-          Attach to an area, goal or activity
-        </button>
-      ) : (
+      {data.attachedTo.length > 0 ? (
         <section className="flex flex-col gap-1">
-          <div className="flex items-center justify-between">
-            <h2 className={headingClassName}>
-              {data.belongsTo ? "Also attached to" : "Attached to"}
-            </h2>
-            <button
-              type="button"
-              aria-label="Attach to an area, goal or activity"
-              onClick={(event) =>
-                setAttaching({ documentId, anchor: event.currentTarget })
-              }
-              className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground max-md:size-11"
-            >
-              <Plus className="size-3.5" />
-            </button>
-          </div>
+          <h2 className={headingClassName}>
+            {data.belongsTo ? "Also attached to" : "Attached to"}
+          </h2>
           {data.attachedTo.map((owner) => (
-            <div
+            <OwnerLink
               key={owner.ownerKey}
-              className="group/owner -mx-2 flex items-start"
+              ownerKey={owner.ownerKey}
+              workspaceSlug={workspace.slug}
+              className={cn(entryClassName, "-mx-2")}
             >
-              <OwnerLink
-                ownerKey={owner.ownerKey}
-                workspaceSlug={workspace.slug}
-                className={entryClassName}
-              >
-                <span className="flex h-5 items-center">
-                  <OwnerIcon owner={owner} />
+              <span className="flex h-5 items-center">
+                <OwnerIcon owner={owner} />
+              </span>
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span dir="auto" className="truncate">
+                  {ownerTitle(owner)}
                 </span>
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span dir="auto" className="truncate">
-                    {ownerTitle(owner)}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {ownerSubtitle(owner)}
-                  </span>
+                <span className="text-xs text-muted-foreground">
+                  {ownerSubtitle(owner)}
                 </span>
-              </OwnerLink>
-              <button
-                type="button"
-                aria-label={`Detach from ${ownerTitle(owner)}`}
-                onClick={() =>
-                  detach.mutate({ documentId, ownerKey: owner.ownerKey })
-                }
-                className="mt-1 hidden size-7 items-center justify-center rounded-md text-muted-foreground group-focus-within/owner:flex group-hover/owner:flex hover:bg-muted hover:text-foreground max-md:flex max-md:size-11"
-              >
-                <X className="size-3.5" />
-              </button>
-            </div>
+              </span>
+            </OwnerLink>
           ))}
         </section>
-      )}
+      ) : null}
 
       {data.mentionedIn.length > 0 ? (
         <section className="flex flex-col gap-1">

@@ -58,15 +58,10 @@ const iconPickerAtom = atom<{
   target: IconTarget
   anchor: Element | null
 } | null>(null)
-const attachingAtom = atom<{
-  documentId: string
-  anchor: Element | null
-} | null>(null)
 const actionSheetAtom = atom<NotebookItemTarget | null>(null)
 
 export {
   actionSheetAtom,
-  attachingAtom,
   deletingAtom,
   expandedFoldersAtom,
   hiddenRevealAtom,

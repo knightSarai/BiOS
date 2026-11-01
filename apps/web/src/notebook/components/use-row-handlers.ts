@@ -1,6 +1,5 @@
 import { useSetAtom } from "jotai"
 import {
-  attachingAtom,
   deletingAtom,
   iconPickerAtom,
   movingAtom,
@@ -24,14 +23,12 @@ const useRowHandlers = (
   const setMoving = useSetAtom(movingAtom)
   const setDeleting = useSetAtom(deletingAtom)
   const setIconPicker = useSetAtom(iconPickerAtom)
-  const setAttaching = useSetAtom(attachingAtom)
 
   return {
     newDocument: () => void actions.newDocument(item.id),
     newFolder: () => void actions.newFolder(item.id),
     rename: () => setRenaming({ kind: item.kind, id: item.id }),
     move: () => setMoving({ ...item, anchor: anchor.current }),
-    attach: () => setAttaching({ documentId: item.id, anchor: anchor.current }),
     changeIcon: () =>
       setIconPicker({
         target: { kind: "document", id: item.id },

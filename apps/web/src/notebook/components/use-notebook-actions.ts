@@ -7,7 +7,6 @@ import {
   useCreateNotebookDocument,
   useDeleteDocument,
   useDeleteFolder,
-  useDetachDocument,
   useDuplicateDocument,
   useMoveDocument,
   useMoveFolder,
@@ -35,7 +34,6 @@ const useNotebookActions = (workspace: NotebookWorkspace) => {
   const undoDocumentMove = useUndoDocumentMove(workspace.id)
   const moveFolder = useMoveFolder(workspace.id)
   const undoFolderMove = useUndoFolderMove(workspace.id)
-  const detach = useDetachDocument(workspace.id)
   const deleteDocument = useDeleteDocument(workspace.id)
   const deleteFolder = useDeleteFolder(workspace.id)
   const restore = useRestoreDeleted(workspace.id)
@@ -98,7 +96,6 @@ const useNotebookActions = (workspace: NotebookWorkspace) => {
     })
     if (!result) return
     expand(folderId)
-    const ownerKey = result.move.attachedOwner
     toast(`Moved to ${result.targetLabel}`, {
       description: result.attachedLabel
         ? `Still attached to ${result.attachedLabel}`
@@ -107,12 +104,6 @@ const useNotebookActions = (workspace: NotebookWorkspace) => {
         label: "Undo",
         onClick: () => undoDocumentMove.mutate(result.move),
       },
-      cancel: ownerKey
-        ? {
-            label: "Detach",
-            onClick: () => detach.mutate({ documentId, ownerKey }),
-          }
-        : undefined,
     })
   }
 

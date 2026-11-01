@@ -6,7 +6,6 @@ import {
   FolderInput,
   FolderPlus,
   Link2,
-  Paperclip,
   Pencil,
   SmilePlus,
   Trash2,
@@ -38,7 +37,6 @@ type RowActionHandlers = {
   newFolder: () => void
   rename: () => void
   move: () => void
-  attach: () => void
   changeIcon: () => void
   copyLink: () => void
   duplicate: () => void
@@ -92,7 +90,6 @@ const documentActions = (on: RowActionHandlers): RowAction[] => [
     onSelect: on.rename,
   },
   { key: "move", label: "Move to", icon: FolderInput, onSelect: on.move },
-  { key: "attach", label: "Attach to…", icon: Paperclip, onSelect: on.attach },
   {
     key: "icon",
     label: "Change icon",

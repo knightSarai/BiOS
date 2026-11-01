@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { keyBetween, keysAfter } from "./sort-keys"
+import { compareSortKeys, keyBetween, keysAfter } from "./sort-keys"
 
 describe("keyBetween", () => {
   it("creates a first key", () => {
@@ -32,6 +32,15 @@ describe("keyBetween", () => {
 
   it("rejects keys in the wrong order", () => {
     expect(() => keyBetween("b", "a")).toThrow()
+  })
+})
+
+describe("compareSortKeys", () => {
+  it("orders by code unit, so an uppercase key comes before a lowercase one", () => {
+    const keys = keysAfter(null, 2)
+    expect(keys).toEqual(["V", "l"])
+    expect([...keys].reverse().sort(compareSortKeys)).toEqual(["V", "l"])
+    expect(compareSortKeys("V", "V")).toBe(0)
   })
 })
 

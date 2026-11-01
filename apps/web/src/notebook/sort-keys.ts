@@ -42,4 +42,7 @@ const keysAfter = (last: string | null, count: number) => {
   return keys
 }
 
-export { keyBetween, keysAfter }
+// Keys order by code unit, so localeCompare (which folds case) would misorder them.
+const compareSortKeys = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
+
+export { compareSortKeys, keyBetween, keysAfter }

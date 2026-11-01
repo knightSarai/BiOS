@@ -1,6 +1,12 @@
-import { now, parseUtc } from "@knight-os/server/core"
+import { isCivilDate, now, parseUtc } from "@knight-os/server/core"
 import { activityKey } from "@/activities/areas"
+import {
+  keepValidValues,
+  parseFieldValues,
+  setFieldValue,
+} from "@/activities/fields"
 import { isOpenStatus, type ActivityStatus } from "@/activities/status"
+import { compareSortKeys } from "@/notebook/sort-keys"
 import type { ActivityOrigin, ActivityRow, LocalDb } from "./db"
 import {
   contentUpdatesTable,
@@ -21,9 +27,19 @@ type NewActivity = {
   id: string
   areaId: string
   goalId?: string | null
+  typeId?: string | null
+  fields?: Record<string, unknown>
+  dueDate?: string | null
   title: string
   status: ActivityStatus
   origin: ActivityOrigin | null
+}
+
+const requireDueDate = (dueDate: string | null) => {
+  if (dueDate !== null && !isCivilDate(dueDate)) {
+    throw new Error("A due date is a YYYY-MM-DD date.")
+  }
+  return dueDate
 }
 
 const statusChange = (row: ActivityRow, status: ActivityStatus) => {
@@ -133,6 +149,9 @@ class ActivitiesRepository {
             workspaceId: row.workspaceId,
             areaId: row.areaId,
             goalId: row.goalId,
+            typeId: row.typeId,
+            fields: row.fields,
+            dueDate: row.dueDate,
             number: row.number,
             title: row.title,
             status: row.status,
@@ -153,12 +172,20 @@ class ActivitiesRepository {
     const updates = this.contentUpdatesTable()
     const restored = await this.db.transaction(
       "rw",
-      this.db.activities,
-      updates,
+      [
+        this.db.activities,
+        this.db.activityTypes,
+        this.db.activityTypeFields,
+        updates,
+      ],
       async () => {
         if (await this.byId(snapshot.row.id)) return false
         await updates.where("k").equals(snapshot.row.id).delete()
-        await this.db.activities.add(snapshot.row)
+        const fields = await this.typeFields(snapshot.row.typeId)
+        await this.db.activities.add({
+          ...snapshot.row,
+          fields: keepValidValues(fields, snapshot.row.fields),
+        })
         await updates.bulkAdd(snapshot.contentUpdates)
         return true
       }
@@ -169,11 +196,28 @@ class ActivitiesRepository {
     return restored
   }
 
+  private async typeFields(typeId: string | null) {
+    if (typeId === null) return []
+    const type = await this.db.activityTypes.get(typeId)
+    if (type?.workspaceId !== this.ctx.workspaceId) {
+      throw new Error("The type for this activity does not exist.")
+    }
+    const rows = await this.db.activityTypeFields
+      .where("[workspaceId+typeId]")
+      .equals([this.ctx.workspaceId, typeId])
+      .toArray()
+    return rows.sort((a, b) => compareSortKeys(a.sortKey, b.sortKey))
+  }
+
   insertMany(activities: NewActivity[]) {
     return this.db.transaction(
       "rw",
-      this.db.areas,
-      this.db.activities,
+      [
+        this.db.areas,
+        this.db.activities,
+        this.db.activityTypes,
+        this.db.activityTypeFields,
+      ],
       async () => {
         const timestamp = parseUtc(now())
         const created: { id: string; key: string }[] = []
@@ -182,6 +226,11 @@ class ActivitiesRepository {
           if (area?.workspaceId !== this.ctx.workspaceId) {
             throw new Error("The area for this activity does not exist.")
           }
+          const typeId = activity.typeId ?? null
+          const fields = parseFieldValues(
+            await this.typeFields(typeId),
+            activity.fields ?? {}
+          )
           await this.db.areas.update(area.id, {
             nextNumber: area.nextNumber + 1,
           })
@@ -190,6 +239,9 @@ class ActivitiesRepository {
             workspaceId: this.ctx.workspaceId,
             areaId: area.id,
             goalId: activity.goalId ?? null,
+            typeId,
+            fields,
+            dueDate: requireDueDate(activity.dueDate ?? null),
             number: area.nextNumber,
             title: activity.title,
             status: activity.status,
@@ -246,6 +298,49 @@ class ActivitiesRepository {
 
   async setGoal(id: string, goalId: string | null) {
     await this.scoped(id).modify({ goalId, updatedAt: parseUtc(now()) })
+  }
+
+  async setDueDate(id: string, dueDate: string | null) {
+    await this.scoped(id).modify({
+      dueDate: requireDueDate(dueDate),
+      updatedAt: parseUtc(now()),
+    })
+  }
+
+  setFieldValue(id: string, fieldId: string, value: unknown) {
+    return this.db.transaction(
+      "rw",
+      [this.db.activities, this.db.activityTypes, this.db.activityTypeFields],
+      async () => {
+        const row = await this.byId(id)
+        if (!row) return
+        const field = (await this.typeFields(row.typeId)).find(
+          (candidate) => candidate.id === fieldId
+        )
+        if (!field) throw new Error("This field is not on the activity's type.")
+        await this.db.activities.update(id, {
+          fields: setFieldValue(row.fields, field, value),
+          updatedAt: parseUtc(now()),
+        })
+      }
+    )
+  }
+
+  changeType(id: string, typeId: string | null) {
+    return this.db.transaction(
+      "rw",
+      [this.db.activities, this.db.activityTypes, this.db.activityTypeFields],
+      async () => {
+        const row = await this.byId(id)
+        if (!row || row.typeId === typeId) return
+        const fields = await this.typeFields(typeId)
+        await this.db.activities.update(id, {
+          typeId,
+          fields: keepValidValues(fields, row.fields),
+          updatedAt: parseUtc(now()),
+        })
+      }
+    )
   }
 
   listForGoal(goalId: string) {

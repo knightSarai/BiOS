@@ -2,7 +2,9 @@ import { Dexie, type EntityTable } from "dexie"
 import yDexie from "y-dexie"
 import type * as Y from "yjs"
 import type { UtcDatetime } from "@knight-os/server/core"
+import type { StatusNames, TypeColor } from "@/activities/activity-types"
 import type { AreaColor } from "@/activities/areas"
+import type { FieldKind, FieldOption, FieldValues } from "@/activities/fields"
 import type { ActivityStatus } from "@/activities/status"
 import type { GoalStatus } from "@/goals/status"
 import type { JournalFolderRole, JournalRef } from "@/journal/periods"
@@ -82,6 +84,9 @@ type ActivityRow = {
   workspaceId: string
   areaId: string
   goalId: string | null
+  typeId: string | null
+  fields: FieldValues
+  dueDate: string | null
   number: number
   title: string
   status: ActivityStatus
@@ -91,6 +96,29 @@ type ActivityRow = {
   updatedAt: UtcDatetime
   completedAt: UtcDatetime | null
   content: Y.Doc
+}
+
+type ActivityTypeRow = {
+  id: string
+  workspaceId: string
+  name: string
+  color: TypeColor
+  icon: string | null
+  statusNames: StatusNames
+  createdAt: UtcDatetime
+  updatedAt: UtcDatetime
+}
+
+type ActivityTypeFieldRow = {
+  id: string
+  workspaceId: string
+  typeId: string
+  name: string
+  kind: FieldKind
+  options: FieldOption[]
+  sortKey: string
+  createdAt: UtcDatetime
+  updatedAt: UtcDatetime
 }
 
 type GoalRow = {
@@ -112,6 +140,8 @@ type LocalDb = Dexie & {
   mentions: EntityTable<MentionRow, "id">
   areas: EntityTable<AreaRow, "id">
   activities: EntityTable<ActivityRow, "id">
+  activityTypes: EntityTable<ActivityTypeRow, "id">
+  activityTypeFields: EntityTable<ActivityTypeFieldRow, "id">
   goals: EntityTable<GoalRow, "id">
 }
 
@@ -184,6 +214,23 @@ const createLocalDb = (name: string): LocalDb => {
         .filter((row) => row.status === "active")
         .modify({ status: "current" })
     })
+  db.version(6)
+    .stores({
+      activities:
+        "id, workspaceId, areaId, goalId, typeId, [areaId+number], [workspaceId+updatedAt], content: Y.Doc",
+      activityTypes: "id, workspaceId",
+      activityTypeFields: "id, [workspaceId+typeId]",
+    })
+    .upgrade(async (tx) => {
+      await tx
+        .table<ActivityRow, string>("activities")
+        .toCollection()
+        .modify((row) => {
+          row.typeId = null
+          row.fields = {}
+          row.dueDate = null
+        })
+    })
   return db
 }
 
@@ -198,6 +245,8 @@ export { createLocalDb, getLocalDb, ROOT_FOLDER_ID }
 export type {
   ActivityOrigin,
   ActivityRow,
+  ActivityTypeFieldRow,
+  ActivityTypeRow,
   AreaRow,
   AttachmentRow,
   DocumentRow,

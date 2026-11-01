@@ -172,7 +172,7 @@ Each decision gives its options with an example. "Lean" marks my suggestion; the
 
 ### D5. What the activity body is
 
-*Superseded 2026-11-01 by [notebook-and-storage.md](notebook-and-storage.md) B1: the body uses the same editor but is stored on the activity and is not a document.*
+*Superseded 2026-11-01: the body uses the same editor but is stored on the activity and is not a document.*
 
 - **A. An owned document:** the same document type and storage, with `owner: activity`. It is searchable but stays out of the Documents list. It can be split out into a standalone document later. *Lean.*
 - **B. A plain description field** using the same editor, but not a document (no history, no backlinks of its own).

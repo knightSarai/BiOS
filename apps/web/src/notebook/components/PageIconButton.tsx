@@ -1,6 +1,7 @@
 import { useSetAtom } from "jotai"
-import { SmilePlus } from "lucide-react"
+import { FileText, SmilePlus } from "lucide-react"
 import { iconPickerAtom, type IconTarget } from "./atoms"
+import { StoredIcon } from "./StoredIcon"
 
 // "Add icon" shows while hovering an ancestor marked `group/page`.
 function PageIconButton({
@@ -19,9 +20,19 @@ function PageIconButton({
         type="button"
         aria-label="Change icon"
         onClick={(event) => open(event.currentTarget)}
-        className="mb-1 -ml-1.5 flex size-14 items-center justify-center rounded-lg text-[40px] leading-none hover:bg-accent"
+        className="mb-1 -ml-1 flex size-8 items-center justify-center rounded-md hover:bg-accent"
       >
-        {icon}
+        <StoredIcon
+          value={icon}
+          className="size-6 text-[22px]"
+          fallback={
+            <FileText
+              aria-hidden
+              strokeWidth={1.75}
+              className="size-6 text-muted-foreground"
+            />
+          }
+        />
       </button>
     )
   }

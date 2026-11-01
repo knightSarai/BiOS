@@ -3,7 +3,7 @@ import { EMOJI_CATEGORIES, searchEmoji } from "./emoji-catalog"
 
 describe("searchEmoji", () => {
   it("finds emoji by any word in their name", () => {
-    expect(searchEmoji("box").map((entry) => entry.emoji)).toEqual(["🥊"])
+    expect(searchEmoji("boxing").map((entry) => entry.emoji)).toEqual(["🥊"])
     expect(searchEmoji("  CALENDAR ").map((entry) => entry.emoji)).toEqual([
       "📅",
       "🗓️",
@@ -20,11 +20,18 @@ describe("searchEmoji", () => {
     expect(searchEmoji("   ")).toEqual([])
   })
 
-  it("has about two hundred emoji", () => {
+  it("has about four hundred emoji", () => {
     const count = EMOJI_CATEGORIES.reduce(
       (sum, group) => sum + group.emoji.length,
       0
     )
-    expect(count).toBeGreaterThan(150)
+    expect(count).toBeGreaterThan(380)
+  })
+
+  it("lists each emoji once within a category", () => {
+    for (const group of EMOJI_CATEGORIES) {
+      const emoji = group.emoji.map((entry) => entry.emoji)
+      expect(new Set(emoji).size, group.name).toBe(emoji.length)
+    }
   })
 })

@@ -1,9 +1,10 @@
 import { Popover } from "@base-ui/react/popover"
 import { useAtomValue } from "jotai"
-import { CalendarDays, FileText } from "lucide-react"
+import { FileText } from "lucide-react"
 import type { EditorView } from "prosemirror-view"
 import { StatusIcon } from "@/activities/components/StatusIcon"
 import { cn } from "@/lib/utils"
+import { StoredIcon } from "@/notebook/components/StoredIcon"
 import type { MentionBridge } from "../mention-bridge"
 import {
   applyMention,
@@ -87,18 +88,13 @@ function MentionMenu({ atoms, bridge, menuId }: MentionMenuProps) {
                       }
                     >
                       {candidate.kind === "document" ? (
-                        candidate.icon ? (
-                          <span
-                            aria-hidden
-                            className="w-4 text-center text-[13px]"
-                          >
-                            {candidate.icon}
-                          </span>
-                        ) : candidate.journal ? (
-                          <CalendarDays className="size-3.5 shrink-0 text-muted-foreground" />
-                        ) : (
-                          <FileText className="size-3.5 shrink-0 text-muted-foreground" />
-                        )
+                        <StoredIcon
+                          value={candidate.icon}
+                          className="size-3.5"
+                          fallback={
+                            <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+                          }
+                        />
                       ) : (
                         <StatusIcon status={candidate.status} />
                       )}

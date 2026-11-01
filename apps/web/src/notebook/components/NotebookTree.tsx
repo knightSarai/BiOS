@@ -452,12 +452,9 @@ function TreeRow({
           <span aria-hidden className="w-4 shrink-0 max-md:w-8" />
         )}
         {kind === "folder" ? (
-          <FolderIcon role={node.folder.role} open={isOpen} />
+          <FolderIcon open={isOpen} />
         ) : (
-          <DocumentIcon
-            icon={node.document.icon}
-            journal={node.document.journal}
-          />
+          <DocumentIcon icon={node.document.icon} />
         )}
         {isRenaming ? (
           <InlineName

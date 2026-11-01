@@ -30,6 +30,7 @@ import {
   movingAtom,
 } from "@/notebook/components/atoms"
 import { DocumentIcon } from "@/notebook/components/ItemIcon"
+import { hasCustomIcon } from "@/notebook/stored-icon"
 import {
   copyToClipboard,
   crumbMenuItemClassName as itemClassName,
@@ -99,9 +100,10 @@ function DocumentCrumb() {
           icon={
             <DocumentIcon
               icon={document.icon}
-              journal={document.journal}
               className={
-                document.icon ? undefined : "size-[15px] text-accent-text"
+                hasCustomIcon(document.icon)
+                  ? undefined
+                  : "size-[15px] text-accent-text"
               }
             />
           }

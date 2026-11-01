@@ -258,7 +258,7 @@ Taken from a look at Notion's sidebar on 2026-11-01. *All decided 2026-11-01.*
 | # | Topic | Decision |
 | --- | --- | --- |
 | N29 | Weekly pages | A `Weeks` folder under each year, next to the months: `Journal/2026/Weeks/Week 44 · 26 Oct – 1 Nov`. Every week page shows its date range. A week that spans New Year belongs to the year holding its Thursday (ISO). Daily pages link to their week, week pages list their days, and Today opens this week. |
-| N30 | Icons | Documents can have an emoji or a line icon from a small set. Without one they show the page icon; Journal pages show the calendar. Folders keep the folder icon for now. Set it from the icon above the title or "Change icon" in the ⋯ menu. The icon shows in the tree, breadcrumbs, link previews, mentions, Mod K and Documents lists. The mirror stores it as `icon:` in frontmatter. |
+| N30 | Icons | Documents can have an emoji (about 400) or a filled Phosphor icon (about 370, in 9 preset colors), picked from Icons and Emojis tabs. Every document stores the plain file icon by default, so the picker shows it as selected; Journal pages are no exception. Every folder, Journal included, uses the folder icon (revised 2026-11-01). Set it from the icon above the title or "Change icon" in the ⋯ menu. The icon shows in the tree, breadcrumbs, link previews, mentions, Mod K and Documents lists. The mirror stores it as `icon:` in frontmatter. |
 | N31 | Creating | The + next to Notebook opens New document and New folder, created at the top level. A folder's + creates a document inside it; its ⋯ menu has New document and New folder. A new folder appears in the tree with its name selected for typing: Enter saves, Escape cancels. A new document opens with its title focused. |
 
 ## Suggested build order

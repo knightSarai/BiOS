@@ -46,7 +46,6 @@ const createMentionBridge = (
           id: row.id,
           title: row.title,
           icon: row.icon,
-          journal: row.journal !== null,
           path: pathOf(row.folderId),
         }))
       const activities: MentionCandidate[] = owners()
@@ -83,7 +82,6 @@ const createMentionBridge = (
             ? {
                 title: row.title,
                 icon: row.icon,
-                journal: row.journal !== null,
               }
             : null
         )
@@ -100,7 +98,6 @@ const createMentionBridge = (
       return {
         title: row.title,
         icon: row.icon,
-        journal: row.journal !== null,
         path: pathOf(row.folderId),
         excerpt: row.excerpt,
         edited: formatActivityTimestamp(

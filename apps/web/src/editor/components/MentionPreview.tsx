@@ -1,6 +1,7 @@
 import { Popover } from "@base-ui/react/popover"
 import { atom, useAtomValue } from "jotai"
-import { CalendarDays, FileText } from "lucide-react"
+import { FileText } from "lucide-react"
+import { StoredIcon } from "@/notebook/components/StoredIcon"
 import type { MentionBridge } from "../mention-bridge"
 
 type HoveredMention = { documentId: string; anchor: Element } | null
@@ -33,21 +34,16 @@ function MentionPreview({ hoverAtom, bridge }: MentionPreviewProps) {
             className="flex w-72 flex-col gap-1.5 rounded-lg bg-popover p-3 text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-none"
           >
             <span className="flex items-center gap-2 text-sm font-semibold">
-              {preview.icon ? (
-                <span aria-hidden className="text-base leading-none">
-                  {preview.icon}
-                </span>
-              ) : preview.journal ? (
-                <CalendarDays
-                  aria-hidden
-                  className="size-4 text-muted-foreground"
-                />
-              ) : (
-                <FileText
-                  aria-hidden
-                  className="size-4 text-muted-foreground"
-                />
-              )}
+              <StoredIcon
+                value={preview.icon}
+                className="text-base"
+                fallback={
+                  <FileText
+                    aria-hidden
+                    className="size-4 text-muted-foreground"
+                  />
+                }
+              />
               <span dir="auto" className="truncate">
                 {preview.title || "Untitled"}
               </span>

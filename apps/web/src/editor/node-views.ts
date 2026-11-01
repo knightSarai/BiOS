@@ -6,6 +6,9 @@ import type {
   ViewMutationRecord,
 } from "prosemirror-view"
 import { createStatusIconElement } from "@/activities/status-icon-element"
+import { createIconGlyphElement } from "@/notebook/icon-glyph-element"
+import { ICON_PATHS } from "@/notebook/icon-paths.generated"
+import { ICON_COLORS, parseStoredIcon } from "@/notebook/stored-icon"
 import type { ActivityBridge, ActivityChipSummary } from "./activity-bridge"
 import type { MentionBridge, MentionSummary } from "./mention-bridge"
 import { toggleCollapsibleAt, toggleTaskAt } from "./commands"
@@ -277,8 +280,6 @@ class ActivityChipView implements NodeView {
 
 const FILE_ICON_PATH =
   "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z M14 2v4a2 2 0 0 0 2 2h4"
-const CALENDAR_ICON_PATH =
-  "M8 2v4 M16 2v4 M3 10h18 M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"
 
 class MentionChipView implements NodeView {
   dom: HTMLSpanElement
@@ -316,6 +317,22 @@ class MentionChipView implements NodeView {
     )
   }
 
+  private iconElement(value: string | null) {
+    const stored = value ? parseStoredIcon(value) : null
+    if (stored?.kind === "emoji") return stored.emoji
+    const paths =
+      stored?.kind === "icon" ? ICON_PATHS.get(stored.name) : undefined
+    if (stored?.kind === "icon" && paths) {
+      return createIconGlyphElement(
+        paths,
+        `size-3.5 ${ICON_COLORS[stored.color].text}`
+      )
+    }
+    const glyph = icon(FILE_ICON_PATH, "size-3.5")
+    glyph.setAttribute("stroke-width", "2")
+    return glyph
+  }
+
   private render(summary: MentionSummary | null | undefined) {
     if (!summary) {
       this.icon.replaceChildren(icon(FILE_ICON_PATH, "size-3.5"))
@@ -325,16 +342,7 @@ class MentionChipView implements NodeView {
       return
     }
     this.dom.classList.remove("line-through")
-    if (summary.icon) {
-      this.icon.replaceChildren(summary.icon)
-    } else {
-      const glyph = icon(
-        summary.journal ? CALENDAR_ICON_PATH : FILE_ICON_PATH,
-        "size-3.5"
-      )
-      glyph.setAttribute("stroke-width", "2")
-      this.icon.replaceChildren(glyph)
-    }
+    this.icon.replaceChildren(this.iconElement(summary.icon))
     this.title.textContent = summary.title || "Untitled"
   }
 

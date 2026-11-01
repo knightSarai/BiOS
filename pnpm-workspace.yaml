@@ -89,3 +89,4 @@ catalog:
   dompurify: ^3.4.17
   mermaid: ^12.2.0
   lz-string: ^1.5.0
+  '@phosphor-icons/core': ^2.1.1

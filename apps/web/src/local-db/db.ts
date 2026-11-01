@@ -10,6 +10,7 @@ import type { GoalStatus } from "@/goals/status"
 import type { JournalFolderRole, JournalRef } from "@/journal/periods"
 import type { OwnerKey } from "@/notebook/owners"
 import { keyBetween, keysAfter } from "@/notebook/sort-keys"
+import { DEFAULT_DOCUMENT_ICON } from "@/notebook/stored-icon"
 
 // IndexedDB cannot index null, so top-level items point at this parent id.
 const ROOT_FOLDER_ID = "root"
@@ -230,6 +231,18 @@ const createLocalDb = (name: string): LocalDb => {
           row.fields = {}
           row.dueDate = null
         })
+    })
+  db.version(7)
+    .stores({
+      documents:
+        "id, workspaceId, [workspaceId+updatedAt], [workspaceId+folderId], [workspaceId+journalKey], content: Y.Doc",
+    })
+    .upgrade(async (tx) => {
+      await tx
+        .table<DocumentRow, string>("documents")
+        .toCollection()
+        .filter((row) => row.icon === null)
+        .modify({ icon: DEFAULT_DOCUMENT_ICON })
     })
   return db
 }

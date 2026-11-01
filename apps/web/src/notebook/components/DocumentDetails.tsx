@@ -135,10 +135,7 @@ function DocumentDetails({
                 className={cn(entryClassName, "-mx-2")}
               >
                 <span className="flex h-5 items-center">
-                  <DocumentIcon
-                    icon={source.document.icon}
-                    journal={source.document.journal}
-                  />
+                  <DocumentIcon icon={source.document.icon} />
                 </span>
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span dir="auto" className="truncate">

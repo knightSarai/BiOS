@@ -18,7 +18,6 @@ const candidates: MentionCandidate[] = [
     id: "doc-gym",
     title: "Gym options",
     icon: null,
-    journal: false,
     path: "Areas / Health",
   },
   {

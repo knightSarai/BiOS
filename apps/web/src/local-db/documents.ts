@@ -1,6 +1,7 @@
 import { now, parseUtc } from "@knight-os/server/core"
 import { journalKeyOf, type JournalRef } from "@/journal/periods"
 import { keyBetween } from "@/notebook/sort-keys"
+import { DEFAULT_DOCUMENT_ICON } from "@/notebook/stored-icon"
 import { ROOT_FOLDER_ID, type LocalDb } from "./db"
 import {
   deleteDocumentsWithin,
@@ -94,7 +95,7 @@ class DocumentsRepository {
       title: document.title ?? "",
       folderId,
       sortKey: keyBetween(await this.lastSortKey(folderId), null),
-      icon: null,
+      icon: DEFAULT_DOCUMENT_ICON,
       excerpt: "",
       journal,
       journalKey: journal ? journalKeyOf(journal) : null,

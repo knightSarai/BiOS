@@ -116,7 +116,7 @@ function FolderPage({ workspace, folderId }: FolderPageProps) {
                         }}
                         className="flex min-h-11 items-center gap-3 px-4 py-2 transition-colors hover:bg-accent"
                       >
-                        <FolderIcon role={node.folder.role} />
+                        <FolderIcon />
                         <span className="min-w-0 flex-1 truncate">
                           {node.folder.name}
                         </span>
@@ -141,10 +141,7 @@ function FolderPage({ workspace, folderId }: FolderPageProps) {
                         }}
                         className="flex min-h-11 items-center gap-3 px-4 py-2 transition-colors hover:bg-accent"
                       >
-                        <DocumentIcon
-                          icon={node.document.icon}
-                          journal={node.document.journal}
-                        />
+                        <DocumentIcon icon={node.document.icon} />
                         <span
                           dir="auto"
                           className={

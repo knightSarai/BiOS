@@ -2,6 +2,7 @@ import "fake-indexeddb/auto"
 import { afterEach, describe, expect, it } from "vitest"
 import { Dexie } from "dexie"
 import yDexie from "y-dexie"
+import { DEFAULT_DOCUMENT_ICON } from "@/notebook/stored-icon"
 import { createLocalDb, ROOT_FOLDER_ID, type LocalDb } from "./db"
 import { DocumentsRepository } from "./documents"
 
@@ -22,7 +23,12 @@ describe("DocumentsRepository", () => {
     const repo = new DocumentsRepository(freshDb(), { workspaceId: "ws-1" })
     const id = await repo.create()
     const row = await repo.byId(id)
-    expect(row).toMatchObject({ id, workspaceId: "ws-1", title: "" })
+    expect(row).toMatchObject({
+      id,
+      workspaceId: "ws-1",
+      title: "",
+      icon: DEFAULT_DOCUMENT_ICON,
+    })
   })
 
   it("never reads another workspace's documents", async () => {
@@ -97,7 +103,32 @@ describe("upgrading from version 2", () => {
     const newer = rows.find((row) => row.id === "newer")
     const older = rows.find((row) => row.id === "older")
     expect(newer!.sortKey < older!.sortKey).toBe(true)
-    expect(newer).toMatchObject({ icon: null, journal: null, excerpt: "" })
+    expect(newer).toMatchObject({
+      icon: DEFAULT_DOCUMENT_ICON,
+      journal: null,
+      excerpt: "",
+    })
     expect((await db.activities.get("a1"))?.goalId).toBeNull()
+  })
+})
+
+describe("upgrading from version 6", () => {
+  it("gives documents without an icon the default file icon", async () => {
+    const name = `documents-upgrade-7-${crypto.randomUUID()}`
+    const old = new Dexie(name, { addons: [yDexie] })
+    old.version(6).stores({
+      documents:
+        "id, workspaceId, [workspaceId+updatedAt], [workspaceId+folderId], [workspaceId+journalKey], content: Y.Doc",
+    })
+    await old.table("documents").bulkAdd([
+      { id: "plain", workspaceId: "ws-1", title: "Plain", icon: null },
+      { id: "custom", workspaceId: "ws-1", title: "Custom", icon: "🥊" },
+    ])
+    old.close()
+
+    const db = createLocalDb(name)
+    openDbs.push(db)
+    expect((await db.documents.get("plain"))?.icon).toBe(DEFAULT_DOCUMENT_ICON)
+    expect((await db.documents.get("custom"))?.icon).toBe("🥊")
   })
 })

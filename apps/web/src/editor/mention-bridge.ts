@@ -6,7 +6,6 @@ type MentionCandidate =
       id: string
       title: string
       icon: string | null
-      journal: boolean
       path: string
     }
   | {
@@ -20,7 +19,6 @@ type MentionCandidate =
 type MentionSummary = {
   title: string
   icon: string | null
-  journal: boolean
 }
 
 type MentionPreview = MentionSummary & {

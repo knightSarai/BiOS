@@ -82,7 +82,7 @@ function EntityDocuments({
         params={{ workspace: workspace.slug, documentId: document.id }}
         className="flex min-h-9 min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 text-sm transition-colors hover:bg-accent max-md:min-h-11"
       >
-        <DocumentIcon icon={document.icon} journal={document.journal} />
+        <DocumentIcon icon={document.icon} />
         <span
           dir="auto"
           className={cn(
@@ -212,7 +212,7 @@ function EntityDocumentsPanel({
         title={document.title || "Untitled"}
         className="flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 transition-colors hover:bg-accent max-md:min-h-11"
       >
-        <DocumentIcon icon={document.icon} journal={document.journal} />
+        <DocumentIcon icon={document.icon} />
         <span
           dir="auto"
           className={cn("truncate", !document.title && "text-muted-foreground")}
@@ -360,7 +360,7 @@ function AttachDocumentPopover({
                 }
                 className="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-accent max-md:min-h-11"
               >
-                <DocumentIcon icon={document.icon} journal={document.journal} />
+                <DocumentIcon icon={document.icon} />
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span dir="auto" className="truncate text-sm">
                     {document.title || "Untitled"}

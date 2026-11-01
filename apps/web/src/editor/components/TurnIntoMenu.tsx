@@ -16,7 +16,7 @@ import { blockIcons } from "./block-icons"
 import { shortcutKeys } from "./shortcut-keys"
 
 const convertibleBlocks = blockCatalog.filter(
-  (item) => item.kind !== "horizontal_rule"
+  (item) => item.kind !== "horizontal_rule" && item.kind !== "drawing"
 )
 
 type TurnIntoItemsProps = {

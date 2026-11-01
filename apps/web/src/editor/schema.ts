@@ -139,6 +139,40 @@ const schema = new Schema({
         ["hr", { class: "border-border" }],
       ],
     },
+    drawing: {
+      group: "block",
+      atom: true,
+      selectable: true,
+      attrs: {
+        ...blockId,
+        drawingId: { default: null as string | null },
+        // Shapes travel with a copied block, so pasting into another
+        // document (its own Y.Doc) still has the drawing.
+        snapshot: { default: null as string | null },
+      },
+      parseDOM: [
+        {
+          tag: "div[data-drawing-id]",
+          getAttrs: (dom: HTMLElement | string) =>
+            typeof dom === "string"
+              ? false
+              : {
+                  ...idFromDom(dom),
+                  drawingId: dom.getAttribute("data-drawing-id"),
+                  snapshot: dom.getAttribute("data-drawing-snapshot"),
+                },
+        },
+      ],
+      toDOM: (node) => [
+        "div",
+        {
+          "data-block-id": blockIdOf(node),
+          "data-drawing-id": node.attrs.drawingId as string | null,
+          "data-drawing-snapshot": node.attrs.snapshot as string | null,
+          class: "my-2 min-h-24 rounded-md border border-border",
+        },
+      ],
+    },
     bullet_list: {
       group: "block",
       content: "list_item+",

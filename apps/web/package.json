@@ -16,6 +16,7 @@
     "@fontsource-variable/inter": "catalog:",
     "@fontsource-variable/jetbrains-mono": "catalog:",
     "@knight-os/auth": "catalog:",
+    "@knight-os/drawing": "catalog:",
     "@knight-os/server": "catalog:",
     "@tanstack/match-sorter-utils": "catalog:",
     "@tanstack/react-devtools": "catalog:",

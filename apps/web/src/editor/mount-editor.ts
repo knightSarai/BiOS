@@ -1,3 +1,11 @@
+import {
+  copyDrawing,
+  drawingOf,
+  drawingsOf,
+  readShapes,
+  restoreDrawing,
+} from "@knight-os/drawing"
+import { chainCommands } from "prosemirror-commands"
 import { dropCursor } from "prosemirror-dropcursor"
 import { gapCursor } from "prosemirror-gapcursor"
 import { keymap } from "prosemirror-keymap"
@@ -15,6 +23,13 @@ import type * as Y from "yjs"
 import { blockIdsPlugin } from "./block-ids"
 import { diagramPreviewsOf, pruneDiagramPreviews } from "./diagram-previews"
 import { DOCUMENT_FRAGMENT, seedDocument, titleOf } from "./document-content"
+import {
+  DRAWING_CREATED_META,
+  drawingIdsPlugin,
+  onSelectedDrawing,
+  withDrawingSnapshots,
+} from "./drawing-ids"
+import type { DrawingPreviews } from "./drawing-view"
 import { editorUiPlugin, readUi, setFlashPos, slashItems } from "./editor-ui"
 import { editorInputRules } from "./input-rules"
 import { editorBaseKeymap, editorKeymap } from "./keymap"
@@ -48,6 +63,7 @@ type MountEditorOptions = {
   titleAccessory: HTMLElement | null
   onRequestLink: () => void
   activities: ActivityBridge
+  onOpenDrawing: (drawingId: string) => void
   onError: (message: string) => void
   onState: (snapshot: { view: EditorView; state: EditorState } | null) => void
   onContentChange: (title: string) => void
@@ -137,6 +153,23 @@ const mountEditor = (options: MountEditorOptions) => {
     if (disposed) return
     seedDocument(options.ydoc)
     const fragment = options.ydoc.getXmlFragment(DOCUMENT_FRAGMENT)
+    const drawingPreviews: DrawingPreviews = {
+      read: (drawingId) => readShapes(drawingOf(options.ydoc, drawingId)),
+      observe: (drawingId, onChange) => {
+        const drawings = drawingsOf(options.ydoc)
+        const onEvents = (events: Y.YEvent<Y.AbstractType<unknown>>[]) => {
+          const touched = events.some((event) =>
+            event.target === drawings
+              ? event.changes.keys.has(drawingId)
+              : event.path[0] === drawingId
+          )
+          if (touched) onChange()
+        }
+        drawings.observeDeep(onEvents)
+        return () => drawings.unobserveDeep(onEvents)
+      },
+      open: options.onOpenDrawing,
+    }
     const { doc, mapping } = initProseMirrorDoc(fragment, schema)
 
     const state = EditorState.create({
@@ -150,7 +183,10 @@ const mountEditor = (options: MountEditorOptions) => {
             return true
           },
           "Mod-Shift-o": createActivitiesCommand(options.activities.create),
-          Enter: onSelectedActivity(options.activities.open),
+          Enter: chainCommands(
+            onSelectedActivity(options.activities.open),
+            onSelectedDrawing(options.onOpenDrawing)
+          ),
           "Mod-Enter": onSelectedActivity(options.activities.toggleDone),
         }),
         editorInputRules,
@@ -162,6 +198,12 @@ const mountEditor = (options: MountEditorOptions) => {
         gapCursor(),
         blockIdsPlugin,
         mermaidEditingPlugin,
+        drawingIdsPlugin({
+          has: (drawingId) => drawingOf(options.ydoc, drawingId) !== undefined,
+          copy: (fromId, toId) => copyDrawing(options.ydoc, fromId, toId),
+          restore: (drawingId, snapshot) =>
+            restoreDrawing(options.ydoc, drawingId, snapshot),
+        }),
         ...(options.titleAccessory
           ? [titleAccessoryPlugin(options.titleAccessory)]
           : []),
@@ -173,8 +215,15 @@ const mountEditor = (options: MountEditorOptions) => {
 
     const editor: EditorView = new EditorView(options.element, {
       state,
-      nodeViews: createNodeViews(options.activities, diagramPreviews),
+      nodeViews: createNodeViews(options.activities, {
+        diagramPreviews,
+        drawingPreviews,
+      }),
       attributes: (state) => editorAttributes(state, options.slashMenuId),
+      transformCopied: (slice) =>
+        withDrawingSnapshots(slice, (drawingId) =>
+          JSON.stringify(readShapes(drawingOf(options.ydoc, drawingId)))
+        ),
       dispatchTransaction(tr) {
         if (disposed) return
         const createdIds = tr.getMeta(ACTIVITY_CREATION_META) as
@@ -192,6 +241,10 @@ const mountEditor = (options: MountEditorOptions) => {
         }
         options.onState({ view: editor, state: next })
         if (tr.docChanged) scheduleContentSave(titleOf(next.doc))
+        const createdDrawing: unknown = tr.getMeta(DRAWING_CREATED_META)
+        if (typeof createdDrawing === "string") {
+          options.onOpenDrawing(createdDrawing)
+        }
       },
     })
 

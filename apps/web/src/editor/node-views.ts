@@ -9,6 +9,7 @@ import { createStatusIconElement } from "@/activities/status-icon-element"
 import type { ActivityBridge, ActivityChipSummary } from "./activity-bridge"
 import { toggleCollapsibleAt, toggleTaskAt } from "./commands"
 import type { DiagramPreviews } from "./diagram-previews"
+import { DrawingView, type DrawingPreviews } from "./drawing-view"
 import { MermaidView } from "./mermaid-view"
 
 const svgNamespace = "http://www.w3.org/2000/svg"
@@ -275,7 +276,10 @@ class ActivityChipView implements NodeView {
 
 const createNodeViews = (
   bridge: ActivityBridge,
-  diagramPreviews: DiagramPreviews
+  previews: {
+    diagramPreviews: DiagramPreviews
+    drawingPreviews: DrawingPreviews
+  }
 ) => ({
   task_item: (node: Node, view: EditorView, getPos: GetPos) =>
     new TaskItemView(node, view, getPos),
@@ -287,7 +291,9 @@ const createNodeViews = (
     view: EditorView,
     getPos: GetPos,
     decorations: readonly Decoration[]
-  ) => new MermaidView(node, view, getPos, diagramPreviews, decorations),
+  ) =>
+    new MermaidView(node, view, getPos, previews.diagramPreviews, decorations),
+  drawing: (node: Node) => new DrawingView(node, previews.drawingPreviews),
 })
 
 export { createNodeViews }

@@ -61,6 +61,12 @@ const blockCatalog = [
     keys: "Mod-Shift-6",
   },
   {
+    kind: "drawing",
+    label: "Drawing",
+    aliases: ["sketch", "whiteboard", "draw", "canvas", "excalidraw"],
+    keys: null,
+  },
+  {
     kind: "horizontal_rule",
     label: "Divider",
     aliases: ["hr", "separator", "line", "rule"],

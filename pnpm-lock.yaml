@@ -185,6 +185,9 @@ catalogs:
     '@knight-os/auth':
       specifier: workspace:*
       version: workspace:*
+    '@knight-os/drawing':
+      specifier: workspace:*
+      version: workspace:*
     '@knight-os/server':
       specifier: workspace:*
       version: workspace:*
@@ -302,6 +305,9 @@ catalogs:
     lucide-react:
       specifier: ^1.61.0
       version: 1.61.0
+    lz-string:
+      specifier: ^1.5.0
+      version: 1.5.0
     mermaid:
       specifier: ^12.2.0
       version: 12.2.0
@@ -420,6 +426,9 @@ importers:
       '@knight-os/auth':
         specifier: 'catalog:'
         version: link:../../packages/auth
+      '@knight-os/drawing':
+        specifier: 'catalog:'
+        version: link:../../packages/drawing
       '@knight-os/server':
         specifier: 'catalog:'
         version: link:../../packages/server
@@ -653,6 +662,34 @@ importers:
       tsx:
         specifier: 'catalog:'
         version: 4.23.15
+      typescript:
+        specifier: 'catalog:'
+        version: '@typescript/typescript6@6.0.2'
+      typescript-eslint:
+        specifier: 'catalog:'
+        version: 8.72.0(@typescript/typescript6@6.0.2)(eslint@10.13.0(jiti@2.7.0))
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@26.6.5)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))
+
+  packages/drawing:
+    dependencies:
+      lz-string:
+        specifier: 'catalog:'
+        version: 1.5.0
+      yjs:
+        specifier: 'catalog:'
+        version: 13.6.33
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.7
+    devDependencies:
+      '@typescript/native':
+        specifier: 'catalog:'
+        version: typescript@7.0.2
+      eslint:
+        specifier: 'catalog:'
+        version: 10.13.0(jiti@2.7.0)
       typescript:
         specifier: 'catalog:'
         version: '@typescript/typescript6@6.0.2'
@@ -4353,6 +4390,10 @@ packages:
     peerDependenciesMeta:
       '@types/react':
         optional: true
+
+  lz-string@1.5.0:
+    resolution: {integrity: sha512-h5bgJWpxJNswbU7qCrV0tIKQCaS3blPDrqKWx+QxzuzL1zGUzij9XCWLrSLsJPu5t+eWA/ycetzYAO5IOMcWAQ==}
+    hasBin: true
 
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
@@ -8825,6 +8866,8 @@ snapshots:
       react: 19.3.1
     optionalDependencies:
       '@types/react': 19.3.0
+
+  lz-string@1.5.0: {}
 
   magic-string@0.30.21:
     dependencies:

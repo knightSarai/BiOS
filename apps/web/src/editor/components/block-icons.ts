@@ -7,6 +7,7 @@ import {
   ListCollapse,
   ListOrdered,
   Minus,
+  Shapes,
   SquareCode,
   TextQuote,
   Type,
@@ -28,6 +29,7 @@ const blockIcons: Record<BlockKind, LucideIcon> = {
   mermaid: Workflow,
   collapsible: ListCollapse,
   horizontal_rule: Minus,
+  drawing: Shapes,
 }
 
 export { blockIcons }

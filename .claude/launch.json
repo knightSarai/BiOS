@@ -4,8 +4,30 @@
     {
       "name": "web",
       "runtimeExecutable": "corepack",
-      "runtimeArgs": ["pnpm", "dev"],
-      "port": 3000
+      "runtimeArgs": [
+        "pnpm",
+        "dev"
+      ],
+      "port": 3000,
+      "autoPort": false
+    },
+    {
+      "name": "web-notebook",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "BETTER_AUTH_URL=http://localhost:3002",
+        "corepack",
+        "pnpm",
+        "--filter",
+        "@knight-os/web",
+        "exec",
+        "vite",
+        "dev",
+        "--port",
+        "3002"
+      ],
+      "port": 3002,
+      "autoPort": false
     }
   ]
 }

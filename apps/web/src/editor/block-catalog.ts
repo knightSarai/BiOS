@@ -49,10 +49,22 @@ const blockCatalog = [
     keys: "Mod-Shift-\\",
   },
   {
+    kind: "mermaid",
+    label: "Diagram",
+    aliases: ["mermaid", "flowchart", "sequence", "chart", "graph"],
+    keys: null,
+  },
+  {
     kind: "collapsible",
     label: "Collapsible section",
     aliases: ["toggle", "details", "fold"],
     keys: "Mod-Shift-6",
+  },
+  {
+    kind: "drawing",
+    label: "Drawing",
+    aliases: ["sketch", "whiteboard", "draw", "canvas", "excalidraw"],
+    keys: null,
   },
   {
     kind: "horizontal_rule",

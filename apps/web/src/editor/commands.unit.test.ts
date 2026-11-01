@@ -1,6 +1,7 @@
-import { TextSelection } from "prosemirror-state"
+import { NodeSelection, TextSelection } from "prosemirror-state"
 import { describe, expect, it } from "vitest"
 import {
+  activeBlockKind,
   deleteBlockAt,
   moveBlockAt,
   setLink,
@@ -23,7 +24,7 @@ import {
   ul,
 } from "./editor-test-utils"
 import { editorBaseKeymap, editorKeymap } from "./keymap"
-import { marks } from "./schema"
+import { marks, schema } from "./schema"
 
 const keymaps = [editorKeymap, editorBaseKeymap]
 
@@ -173,6 +174,160 @@ describe("keyboard", () => {
     expect(blockNames(view.state.doc)).toEqual([
       "title",
       "bullet_list",
+      "paragraph",
+    ])
+  })
+})
+
+describe("diagram blocks", () => {
+  const diagram = (source: string) =>
+    schema.node("mermaid", null, source ? [schema.text(source)] : [])
+
+  it("turns a paragraph's text into diagram source", () => {
+    const view = createView(doc(p("graph TD")), "graph TD")
+    run(view, turnInto("mermaid"))
+    expect(blockNames(view.state.doc)).toEqual(["title", "mermaid"])
+    expect(view.state.doc.child(1).textContent).toBe("graph TD")
+    expect(activeBlockKind(view.state)).toBe("mermaid")
+  })
+
+  it("keeps Enter as a newline inside the source", () => {
+    const view = createView(doc(diagram("graph TD")), "graph TD", keymaps)
+    pressKey(view, "Enter")
+    expect(view.state.doc.child(1).textContent).toBe("graph TD\n")
+  })
+
+  it("selects the whole diagram on Escape", () => {
+    const view = createView(doc(diagram("graph TD")), "graph TD", keymaps)
+    expect(pressKey(view, "Escape")).toBe(true)
+    expect(view.state.selection).toBeInstanceOf(NodeSelection)
+    expect(view.state.selection.from).toBe(view.state.doc.child(0).nodeSize)
+  })
+
+  it("leaves Escape alone outside diagrams", () => {
+    const view = createView(doc(p("Plan")), "Plan", keymaps)
+    expect(pressKey(view, "Escape")).toBe(false)
+  })
+})
+
+describe("diagram keyboard access", () => {
+  const diagram = (source: string) =>
+    schema.node("mermaid", null, source ? [schema.text(source)] : [])
+  const atTextblockEdge = (view: ReturnType<typeof createView>) =>
+    Object.assign(view, { endOfTextblock: () => true })
+
+  it("moves the caret down into a diagram's hidden source", () => {
+    const view = atTextblockEdge(
+      createView(doc(p("Above"), diagram("graph TD")), "Above", keymaps)
+    )
+    expect(pressKey(view, "ArrowDown")).toBe(true)
+    const { $head } = view.state.selection
+    expect($head.parent.type.name).toBe("mermaid")
+    expect($head.parentOffset).toBe(0)
+  })
+
+  it("moves the caret up to the end of a diagram's source", () => {
+    const view = atTextblockEdge(
+      createView(doc(diagram("graph TD"), p("Below")), 0, keymaps)
+    )
+    run(view, (state, dispatch) => {
+      dispatch?.(
+        state.tr.setSelection(
+          TextSelection.create(state.doc, findText(state.doc, "Below"))
+        )
+      )
+      return true
+    })
+    expect(pressKey(view, "ArrowUp")).toBe(true)
+    const { $head } = view.state.selection
+    expect($head.parent.type.name).toBe("mermaid")
+    expect($head.parentOffset).toBe("graph TD".length)
+  })
+
+  it("moves down from the last list item into a following diagram", () => {
+    const view = atTextblockEdge(
+      createView(
+        doc(ul(li("First"), li("Last")), diagram("graph TD")),
+        "Last",
+        keymaps
+      )
+    )
+    expect(pressKey(view, "ArrowDown")).toBe(true)
+    const { $head } = view.state.selection
+    expect($head.parent.type.name).toBe("mermaid")
+    expect($head.parentOffset).toBe(0)
+  })
+
+  it("moves down between list items without skipping to a diagram", () => {
+    const view = atTextblockEdge(
+      createView(
+        doc(ul(li("First"), li("Last")), diagram("graph TD")),
+        "First",
+        keymaps
+      )
+    )
+    expect(pressKey(view, "ArrowDown")).toBe(false)
+  })
+
+  it("moves up from a list's first item into a diagram above it", () => {
+    const view = atTextblockEdge(
+      createView(doc(diagram("graph TD"), ul(li("First"))), "First", keymaps)
+    )
+    expect(pressKey(view, "ArrowUp")).toBe(true)
+    const { $head } = view.state.selection
+    expect($head.parent.type.name).toBe("mermaid")
+    expect($head.parentOffset).toBe("graph TD".length)
+  })
+
+  it("leaves arrows alone when the next block is not a diagram", () => {
+    const view = atTextblockEdge(
+      createView(doc(p("Above"), p("Below")), "Above", keymaps)
+    )
+    expect(pressKey(view, "ArrowDown")).toBe(false)
+  })
+
+  it("opens a selected diagram's source on Enter", () => {
+    const view = createView(doc(diagram("graph TD")), "graph TD", keymaps)
+    pressKey(view, "Escape")
+    expect(pressKey(view, "Enter")).toBe(true)
+    const { $head } = view.state.selection
+    expect($head.parent.type.name).toBe("mermaid")
+    expect(view.state.doc.child(1).textContent).toBe("graph TD")
+  })
+
+  it("keeps a diagram's lines when Backspace is pressed at its start", () => {
+    const view = createView(
+      doc(p("Above"), diagram("graph TD\n  a --> b")),
+      0,
+      keymaps
+    )
+    const start =
+      view.state.doc.child(0).nodeSize + view.state.doc.child(1).nodeSize + 1
+    run(view, (state, dispatch) => {
+      dispatch?.(state.tr.setSelection(TextSelection.create(state.doc, start)))
+      return true
+    })
+    pressKey(view, "Backspace")
+    expect(blockNames(view.state.doc)).toEqual([
+      "title",
+      "paragraph",
+      "mermaid",
+    ])
+    expect(view.state.doc.child(2).textContent).toBe("graph TD\n  a --> b")
+  })
+
+  it("turns an empty diagram back into a paragraph on Backspace", () => {
+    const view = createView(doc(p("Above"), diagram("")), 0, keymaps)
+    const start =
+      view.state.doc.child(0).nodeSize + view.state.doc.child(1).nodeSize + 1
+    run(view, (state, dispatch) => {
+      dispatch?.(state.tr.setSelection(TextSelection.create(state.doc, start)))
+      return true
+    })
+    pressKey(view, "Backspace")
+    expect(blockNames(view.state.doc)).toEqual([
+      "title",
+      "paragraph",
       "paragraph",
     ])
   })

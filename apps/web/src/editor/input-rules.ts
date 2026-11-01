@@ -82,6 +82,7 @@ const editorInputRules = inputRules({
     ),
     taskListRule,
     wrappingInputRule(/^\s*>\s$/, nodes.blockquote),
+    textblockTypeInputRule(/^```mermaid\s$/, nodes.mermaid),
     textblockTypeInputRule(
       /^```([a-z0-9-]*)\s$/,
       nodes.code_block,

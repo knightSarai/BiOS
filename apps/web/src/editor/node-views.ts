@@ -1,9 +1,17 @@
 import type { Node } from "prosemirror-model"
-import type { EditorView, NodeView, ViewMutationRecord } from "prosemirror-view"
+import type {
+  Decoration,
+  EditorView,
+  NodeView,
+  ViewMutationRecord,
+} from "prosemirror-view"
 import { createStatusIconElement } from "@/activities/status-icon-element"
 import type { ActivityBridge, ActivityChipSummary } from "./activity-bridge"
 import type { MentionBridge, MentionSummary } from "./mention-bridge"
 import { toggleCollapsibleAt, toggleTaskAt } from "./commands"
+import type { DiagramPreviews } from "./diagram-previews"
+import { DrawingView, type DrawingPreviews } from "./drawing-view"
+import { MermaidView } from "./mermaid-view"
 
 const svgNamespace = "http://www.w3.org/2000/svg"
 
@@ -353,6 +361,10 @@ class MentionChipView implements NodeView {
 
 const createNodeViews = (
   bridge: ActivityBridge,
+  previews: {
+    diagramPreviews: DiagramPreviews
+    drawingPreviews: DrawingPreviews
+  },
   mentions: MentionBridge | undefined
 ) => ({
   task_item: (node: Node, view: EditorView, getPos: GetPos) =>
@@ -360,6 +372,14 @@ const createNodeViews = (
   collapsible: (node: Node, view: EditorView, getPos: GetPos) =>
     new CollapsibleView(node, view, getPos),
   activity: (node: Node) => new ActivityChipView(node, bridge),
+  mermaid: (
+    node: Node,
+    view: EditorView,
+    getPos: GetPos,
+    decorations: readonly Decoration[]
+  ) =>
+    new MermaidView(node, view, getPos, previews.diagramPreviews, decorations),
+  drawing: (node: Node) => new DrawingView(node, previews.drawingPreviews),
   ...(mentions
     ? { mention: (node: Node) => new MentionChipView(node, mentions) }
     : {}),

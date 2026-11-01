@@ -7,9 +7,11 @@ import {
   ListCollapse,
   ListOrdered,
   Minus,
+  Shapes,
   SquareCode,
   TextQuote,
   Type,
+  Workflow,
   type LucideIcon,
 } from "lucide-react"
 import type { BlockKind } from "../block-catalog"
@@ -24,8 +26,10 @@ const blockIcons: Record<BlockKind, LucideIcon> = {
   task_list: ListChecks,
   blockquote: TextQuote,
   code_block: SquareCode,
+  mermaid: Workflow,
   collapsible: ListCollapse,
   horizontal_rule: Minus,
+  drawing: Shapes,
 }
 
 export { blockIcons }

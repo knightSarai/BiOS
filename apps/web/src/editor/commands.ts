@@ -11,6 +11,7 @@ import {
   type Transaction,
 } from "prosemirror-state"
 import type { BlockKind } from "./block-catalog"
+import { DRAWING_CREATED_META, createDrawingId } from "./drawing-ids"
 import { normalizeHref } from "./links"
 import { marks, nodes } from "./schema"
 
@@ -30,6 +31,10 @@ class Chain {
   run(command: Command) {
     return command(this.current, (step) => {
       for (const s of step.steps) this.tr.step(s)
+      const createdDrawing: unknown = step.getMeta(DRAWING_CREATED_META)
+      if (typeof createdDrawing === "string") {
+        this.tr.setMeta(DRAWING_CREATED_META, createdDrawing)
+      }
       this.current = this.current.apply(step)
     })
   }
@@ -105,28 +110,39 @@ const joinAdjacentLists: Command = (state, dispatch) => {
   return false
 }
 
-const insertDivider: Command = (state, dispatch) => {
-  if (isInTitle(state)) return false
-  if (dispatch) {
-    const { $from, to } = state.selection
-    const atTopLevel = $from.depth === 0
-    const block = atTopLevel ? null : $from.node(1)
-    const start = atTopLevel ? to : $from.before(1)
-    const end = atTopLevel ? to : $from.after(1)
-    const divider = nodes.horizontal_rule.create()
-    const paragraph = nodes.paragraph.create()
-    const tr = state.tr
-    const isEmptyParagraph =
-      block?.type === nodes.paragraph && block.content.size === 0
-    const insertAt = isEmptyParagraph ? start : end
-    if (isEmptyParagraph) tr.replaceWith(start, end, [divider, paragraph])
-    else tr.insert(end, [divider, paragraph])
-    tr.setSelection(
-      TextSelection.create(tr.doc, insertAt + divider.nodeSize + 1)
-    )
-    dispatch(tr.scrollIntoView())
+const insertAtomBlock =
+  (block: Node, tag: (tr: Transaction) => Transaction = (tr) => tr): Command =>
+  (state, dispatch) => {
+    if (isInTitle(state)) return false
+    if (dispatch) {
+      const { $from, to } = state.selection
+      const atTopLevel = $from.depth === 0
+      const current = atTopLevel ? null : $from.node(1)
+      const start = atTopLevel ? to : $from.before(1)
+      const end = atTopLevel ? to : $from.after(1)
+      const paragraph = nodes.paragraph.create()
+      const tr = state.tr
+      const isEmptyParagraph =
+        current?.type === nodes.paragraph && current.content.size === 0
+      const insertAt = isEmptyParagraph ? start : end
+      if (isEmptyParagraph) tr.replaceWith(start, end, [block, paragraph])
+      else tr.insert(end, [block, paragraph])
+      tr.setSelection(
+        TextSelection.create(tr.doc, insertAt + block.nodeSize + 1)
+      )
+      dispatch(tag(tr).scrollIntoView())
+    }
+    return true
   }
-  return true
+
+const insertDivider: Command = (state, dispatch) =>
+  insertAtomBlock(nodes.horizontal_rule.create())(state, dispatch)
+
+const insertDrawing: Command = (state, dispatch) => {
+  const drawingId = createDrawingId()
+  return insertAtomBlock(nodes.drawing.create({ drawingId }), (tr) =>
+    tr.setMeta(DRAWING_CREATED_META, drawingId)
+  )(state, dispatch)
 }
 
 const turnInto =
@@ -134,6 +150,7 @@ const turnInto =
   (state, dispatch) => {
     if (isInTitle(state)) return false
     if (kind === "horizontal_rule") return insertDivider(state, dispatch)
+    if (kind === "drawing") return insertDrawing(state, dispatch)
 
     const chain = new Chain(state)
     unwrapAll(chain)
@@ -151,6 +168,9 @@ const turnInto =
         break
       case "code_block":
         chain.run(setBlockType(nodes.code_block))
+        break
+      case "mermaid":
+        chain.run(setBlockType(nodes.mermaid))
         break
       case "blockquote":
         chain.run(setBlockType(nodes.paragraph))
@@ -185,6 +205,7 @@ const activeBlockKind = (state: EditorState): BlockKind | null => {
     return `heading${parent.attrs.level as 1 | 2 | 3}`
   }
   if (parent.type === nodes.code_block) return "code_block"
+  if (parent.type === nodes.mermaid) return "mermaid"
   return "paragraph"
 }
 
@@ -444,6 +465,7 @@ export {
   duplicateBlockAt,
   indentListItem,
   insertDivider,
+  insertDrawing,
   insertParagraphAfter,
   isInTitle,
   isMarkActive,

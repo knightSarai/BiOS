@@ -4,6 +4,8 @@ import { useMediaQuery } from "@base-ui/react/unstable-use-media-query"
 import { useStore } from "jotai"
 import { toast } from "sonner"
 import type * as Y from "yjs"
+import { DrawingEditorDialog } from "@/drawing/components/DrawingEditorDialog"
+import { createDrawingEditor } from "@/drawing/drawing-editor"
 import type { ActivityBridge } from "../activity-bridge"
 import type { MentionBridge } from "../mention-bridge"
 import type { EditorContent } from "../mention-index"
@@ -56,7 +58,7 @@ function DocumentEditor({
   const mountRef = useCallback(
     (element: HTMLDivElement | null) => {
       if (!element) return
-      return mountEditor({
+      const unmount = mountEditor({
         element,
         ydoc,
         focusBlockId,
@@ -67,6 +69,14 @@ function DocumentEditor({
         activities,
         mentions,
         onError: (message) => toast.error(message),
+        onOpenDrawing: (drawingId) => {
+          store.get(atoms.drawingEditor)?.destroy()
+          store.set(
+            atoms.drawingEditor,
+            createDrawingEditor(ydoc, drawingId, store, atoms.drawingStyle)
+          )
+          store.set(atoms.drawingOpen, true)
+        },
         onState: (snapshot) => store.set(atoms.snapshot, snapshot),
         onRequestLink: () => {
           const snapshot = store.get(atoms.snapshot)
@@ -76,6 +86,12 @@ function DocumentEditor({
           store.set(atoms.linkDraft, href ?? "")
         },
       })
+      return () => {
+        store.get(atoms.drawingEditor)?.destroy()
+        store.set(atoms.drawingEditor, null)
+        store.set(atoms.drawingOpen, false)
+        unmount()
+      }
     },
     [
       ydoc,
@@ -90,6 +106,13 @@ function DocumentEditor({
       atoms,
     ]
   )
+
+  // The editor stays mounted until the dialog's exit animation finishes.
+  const releaseDrawing = () => {
+    store.get(atoms.drawingEditor)?.destroy()
+    store.set(atoms.drawingEditor, null)
+    store.get(atoms.snapshot)?.view.focus()
+  }
 
   const clearHover = () => {
     const snapshot = store.get(atoms.snapshot)
@@ -134,6 +157,11 @@ function DocumentEditor({
           <MentionPreview hoverAtom={mentionHoverAtom} bridge={mentions} />
         </>
       ) : null}
+      <DrawingEditorDialog
+        editorAtom={atoms.drawingEditor}
+        openAtom={atoms.drawingOpen}
+        onClosed={releaseDrawing}
+      />
       {coarsePointer ? (
         <MobileEditorBar
           atoms={atoms}

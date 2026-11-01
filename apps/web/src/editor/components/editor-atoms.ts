@@ -1,6 +1,8 @@
 import { atom } from "jotai"
 import type { EditorState } from "prosemirror-state"
 import type { EditorView } from "prosemirror-view"
+import { DEFAULT_SHAPE_STYLE, type ShapeStyle } from "@knight-os/drawing"
+import type { DrawingEditor } from "@/drawing/drawing-editor"
 
 type EditorSnapshot = {
   view: EditorView
@@ -12,6 +14,9 @@ const createEditorAtoms = () => ({
   linkDraft: atom<string | null>(null),
   blockMenuPos: atom<number | null>(null),
   menuOpen: atom(false),
+  drawingEditor: atom<DrawingEditor | null>(null),
+  drawingOpen: atom(false),
+  drawingStyle: atom<ShapeStyle>(DEFAULT_SHAPE_STYLE),
 })
 
 type EditorAtoms = ReturnType<typeof createEditorAtoms>

@@ -89,9 +89,11 @@ function SlashMenu({ atoms, menuId }: SlashMenuProps) {
                     >
                       <Icon className="size-3.5 shrink-0 text-muted-foreground" />
                       <span className="flex-1">{item.label}</span>
-                      <span className="text-[0.625rem] tracking-widest text-muted-foreground max-md:hidden">
-                        {shortcutKeys(item.keys).join(" ")}
-                      </span>
+                      {item.keys ? (
+                        <span className="text-[0.625rem] tracking-widest text-muted-foreground max-md:hidden">
+                          {shortcutKeys(item.keys).join(" ")}
+                        </span>
+                      ) : null}
                     </div>
                   )
                 })}

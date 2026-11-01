@@ -10,6 +10,11 @@ const textBlock = "my-1 min-h-6 leading-6"
 
 const blockIdOf = (node: Node) => node.attrs.id as string | null
 
+const isMermaidPre = (dom: HTMLElement) =>
+  dom.hasAttribute("data-mermaid") ||
+  dom.getAttribute("lang") === "mermaid" ||
+  dom.querySelector(":scope > code.language-mermaid") !== null
+
 const schema = new Schema({
   nodes: {
     doc: { content: "title block+" },
@@ -94,6 +99,36 @@ const schema = new Schema({
         ["code", 0],
       ],
     },
+    mermaid: {
+      group: "block",
+      content: "text*",
+      marks: "",
+      code: true,
+      defining: true,
+      attrs: blockId,
+      parseDOM: [
+        {
+          tag: "pre",
+          priority: 60,
+          preserveWhitespace: "full",
+          getAttrs: (dom: HTMLElement | string) =>
+            typeof dom !== "string" && isMermaidPre(dom)
+              ? idFromDom(dom)
+              : false,
+        },
+      ],
+      toDOM: (node) => [
+        "pre",
+        {
+          "data-block-id": blockIdOf(node),
+          "data-mermaid": "",
+          dir: "ltr",
+          class:
+            "my-2 overflow-x-auto rounded-md bg-muted px-4 py-3 font-mono text-[13px] leading-5",
+        },
+        ["code", 0],
+      ],
+    },
     horizontal_rule: {
       group: "block",
       attrs: blockId,
@@ -102,6 +137,40 @@ const schema = new Schema({
         "div",
         { "data-block-id": blockIdOf(node), class: "py-3" },
         ["hr", { class: "border-border" }],
+      ],
+    },
+    drawing: {
+      group: "block",
+      atom: true,
+      selectable: true,
+      attrs: {
+        ...blockId,
+        drawingId: { default: null as string | null },
+        // Shapes travel with a copied block, so pasting into another
+        // document (its own Y.Doc) still has the drawing.
+        snapshot: { default: null as string | null },
+      },
+      parseDOM: [
+        {
+          tag: "div[data-drawing-id]",
+          getAttrs: (dom: HTMLElement | string) =>
+            typeof dom === "string"
+              ? false
+              : {
+                  ...idFromDom(dom),
+                  drawingId: dom.getAttribute("data-drawing-id"),
+                  snapshot: dom.getAttribute("data-drawing-snapshot"),
+                },
+        },
+      ],
+      toDOM: (node) => [
+        "div",
+        {
+          "data-block-id": blockIdOf(node),
+          "data-drawing-id": node.attrs.drawingId as string | null,
+          "data-drawing-snapshot": node.attrs.snapshot as string | null,
+          class: "my-2 min-h-24 rounded-md border border-border",
+        },
       ],
     },
     bullet_list: {

@@ -19,6 +19,9 @@ describe("filterBlockCatalog", () => {
     expect(filterBlockCatalog("toggle").map((item) => item.kind)).toEqual([
       "collapsible",
     ])
+    expect(filterBlockCatalog("flowchart").map((item) => item.kind)).toEqual([
+      "mermaid",
+    ])
   })
 
   it("returns nothing for an unknown query", () => {

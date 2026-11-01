@@ -1,6 +1,6 @@
 import { Fragment } from "react"
 import { useAtom } from "jotai"
-import { Link, useMatches } from "@tanstack/react-router"
+import { ClientOnly, Link, useMatches } from "@tanstack/react-router"
 import { ChevronRight, Menu } from "lucide-react"
 import { Toaster } from "@/components/common/Toaster"
 import { Button } from "@/components/ui/button"
@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/sheet"
 import { mobileMenuOpenAtom } from "@layout/atoms"
 import type { NavSection } from "@layout/nav-types"
+import { breadcrumbItems } from "./breadcrumb-items"
 
 type SidebarProps = {
   menu: React.ReactNode
@@ -78,14 +79,7 @@ function SidebarContent({
 }
 
 function Breadcrumb() {
-  const crumbs = useMatches({
-    select: (matches) =>
-      matches.flatMap((match) =>
-        match.staticData.crumb
-          ? [{ ...match.staticData.crumb, to: match.pathname }]
-          : []
-      ),
-  })
+  const crumbs = useMatches({ select: breadcrumbItems })
 
   return (
     <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-0.5">
@@ -99,6 +93,14 @@ function Breadcrumb() {
             <span className="truncate">{crumb.label}</span>
           </>
         )
+        const current = (
+          <span
+            aria-current="page"
+            className="flex min-h-7 items-center gap-[7px] rounded-md px-1.5 whitespace-nowrap text-foreground max-md:min-h-11"
+          >
+            {content}
+          </span>
+        )
 
         return (
           <Fragment key={crumb.to}>
@@ -109,14 +111,13 @@ function Breadcrumb() {
               />
             ) : null}
             {isLast && crumb.Title ? (
-              <crumb.Title />
+              // Titles show client-only data, which the server never renders;
+              // the label keeps hydration matching the server HTML.
+              <ClientOnly fallback={current}>
+                <crumb.Title />
+              </ClientOnly>
             ) : isLast ? (
-              <span
-                aria-current="page"
-                className="flex min-h-7 items-center gap-[7px] rounded-md px-1.5 whitespace-nowrap text-foreground max-md:min-h-11"
-              >
-                {content}
-              </span>
+              current
             ) : (
               <Link
                 to={crumb.to}

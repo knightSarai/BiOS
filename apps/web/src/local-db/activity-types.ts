@@ -4,6 +4,7 @@ import {
   type StatusNames,
   type TypeColor,
 } from "@/activities/activity-types"
+import type { ActivityStatus } from "@/activities/status"
 import {
   keepValidValues,
   kindHasOptions,
@@ -113,6 +114,18 @@ class ActivityTypesRepository {
         ? {}
         : { statusNames: cleanStatusNames(changes.statusNames) }),
       updatedAt: parseUtc(now()),
+    })
+  }
+
+  // Reads the stored names inside the transaction, so quick renames in a row don't overwrite each other.
+  renameStatus(id: string, status: ActivityStatus, name: string) {
+    return this.db.transaction("rw", this.db.activityTypes, async () => {
+      const type = await this.byId(id)
+      if (!type) return
+      await this.db.activityTypes.update(id, {
+        statusNames: cleanStatusNames({ ...type.statusNames, [status]: name }),
+        updatedAt: parseUtc(now()),
+      })
     })
   }
 

@@ -12,6 +12,7 @@ import { DueDateMenu } from "./DueDateMenu"
 
 type FieldInputProps = {
   inputId: string
+  labelId: string
   field: FieldDefinition & { name: string }
   value: FieldValue | undefined
   timezone: string
@@ -22,11 +23,13 @@ type FieldInputProps = {
 
 const RATINGS = [1, 2, 3, 4, 5] as const
 
+const COMPLETE_NUMBER = /^-?\d+(\.\d+)?$/
+
+// Partial input like "1." or "-" stays text so typing isn't rewritten; the repository rejects it if saved as is.
 const toNumber = (text: string) => {
   const trimmed = text.trim()
   if (!trimmed) return null
-  const number = Number(trimmed)
-  return Number.isNaN(number) ? trimmed : number
+  return COMPLETE_NUMBER.test(trimmed) ? Number(trimmed) : text
 }
 
 function TextLikeInput({
@@ -35,7 +38,7 @@ function TextLikeInput({
   value,
   commitOnBlur,
   onChange,
-}: Omit<FieldInputProps, "timezone">) {
+}: Omit<FieldInputProps, "timezone" | "labelId">) {
   const kind = field.kind
   const parse = (text: string) =>
     kind === "number" ? toNumber(text) : text.trim() || null
@@ -70,19 +73,18 @@ function TextLikeInput({
     <Input
       {...inputProps}
       value={shown}
-      onChange={(event) =>
-        onChange(
-          kind === "number"
-            ? toNumber(event.currentTarget.value)
-            : event.currentTarget.value
-        )
-      }
+      onChange={(event) => {
+        const text = event.currentTarget.value
+        if (kind === "number") onChange(toNumber(text))
+        else onChange(text.trim() ? text : null)
+      }}
     />
   )
 }
 
 function FieldControl({
   inputId,
+  labelId,
   field,
   value,
   timezone,
@@ -140,6 +142,7 @@ function FieldControl({
       ) : (
         <ToggleGroup
           id={inputId}
+          aria-labelledby={labelId}
           variant="outline"
           size="sm"
           spacing={4}
@@ -181,7 +184,12 @@ function FieldControl({
     case "rating": {
       const rating = typeof value === "number" ? value : 0
       return (
-        <div id={inputId} className="flex h-8 items-center max-md:h-11">
+        <div
+          id={inputId}
+          role="group"
+          aria-labelledby={labelId}
+          className="flex h-8 items-center max-md:h-11"
+        >
           {RATINGS.map((stars) => (
             <Button
               key={stars}
@@ -207,18 +215,20 @@ function FieldControl({
   }
 }
 
-function FieldInput(props: Omit<FieldInputProps, "inputId">) {
+function FieldInput(props: Omit<FieldInputProps, "inputId" | "labelId">) {
   // The same field can render twice (side panel and mobile), so ids come from useId.
   const inputId = useId()
+  const labelId = `${inputId}-label`
   return (
     <Field className="gap-1.5">
       <FieldLabel
+        id={labelId}
         htmlFor={inputId}
         className="text-xs font-normal text-muted-foreground"
       >
         {props.field.name}
       </FieldLabel>
-      <FieldControl {...props} inputId={inputId} />
+      <FieldControl {...props} inputId={inputId} labelId={labelId} />
     </Field>
   )
 }

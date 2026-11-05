@@ -115,9 +115,15 @@ function NewActivityForm({
       onSubmit: newActivitySchema,
       onSubmitAsync: async ({ value }) => {
         if (!value.areaId) return { form: "Create an area first." }
+        const typeStillExists =
+          types === undefined ||
+          types.some((candidate) => candidate.id === value.typeId)
+        const typed = typeStillExists
+          ? value
+          : { ...value, typeId: null, fields: noFieldValues }
         try {
           const [created] = await createActivities.mutateAsync([
-            { id: crypto.randomUUID(), origin: null, ...value },
+            { id: crypto.randomUUID(), origin: null, ...typed },
           ])
           if (created) announceCreated(created)
         } catch (error) {
@@ -441,7 +447,7 @@ function NewActivityForm({
                   <Link
                     to="/$workspace/settings/activity-types/$typeId"
                     params={{ workspace: workspace.slug, typeId: type.id }}
-                    className="text-xs text-accent-text hover:underline"
+                    className="flex min-h-7 items-center text-xs text-accent-text hover:underline max-md:min-h-11"
                   >
                     {type.fields.length === 0
                       ? "Add fields in Settings"
@@ -538,14 +544,21 @@ function NewActivityForm({
 
 function NewActivityDialog({ workspace }: { workspace: NewActivityWorkspace }) {
   const [{ open, request }, setDialog] = useAtom(newActivityAtom)
-  const search: { area?: string } = useSearch({ strict: false })
+  const activitiesSearch = useSearch({
+    from: "/_authenticated/$workspace/_app/activities/",
+    shouldThrow: false,
+  })
   useHotkey(
     "C",
-    () =>
+    () => {
+      // Other dialogs (new area, change type) hold focus while open; C belongs to them then.
+      if (document.activeElement?.closest("[role=dialog], [role=alertdialog]"))
+        return
       setDialog({
         open: true,
-        request: { areaId: search.area ?? null, goalId: null },
-      }),
+        request: { areaId: activitiesSearch?.area ?? null, goalId: null },
+      })
+    },
     { enabled: !open }
   )
 

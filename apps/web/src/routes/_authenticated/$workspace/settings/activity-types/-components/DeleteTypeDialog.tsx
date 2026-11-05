@@ -30,12 +30,17 @@ function DeleteTypeDialog({
 
   const confirm = async () => {
     setOpen(false)
+    try {
+      await deleteType.mutateAsync(type.id)
+    } catch {
+      toast.error(`Couldn't delete ${type.name}.`)
+      return
+    }
+    toast.success(`Deleted ${type.name}`)
     await navigate({
       to: "/$workspace/settings/activity-types",
       params: { workspace: workspace.slug },
     })
-    await deleteType.mutateAsync(type.id)
-    toast.success(`Deleted ${type.name}`)
   }
 
   return (

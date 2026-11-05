@@ -1,7 +1,7 @@
 import type { StatusNames } from "@/activities/activity-types"
 import { StatusIcon } from "@/activities/components/StatusIcon"
 import { ACTIVITY_STATUSES, statusLabels } from "@/activities/status"
-import { useUpdateActivityType } from "@/local-db/activity-type-mutations"
+import { useRenameTypeStatus } from "@/local-db/activity-type-mutations"
 import { SettingsCard } from "../../-components/SettingsPage"
 import { CommitInput } from "./CommitInput"
 
@@ -14,7 +14,7 @@ function StatusNamesEditor({
   statusNames: StatusNames
   workspaceId: string
 }) {
-  const updateType = useUpdateActivityType(workspaceId)
+  const renameStatus = useRenameTypeStatus(workspaceId)
 
   return (
     <SettingsCard>
@@ -35,10 +35,7 @@ function StatusNamesEditor({
             allowEmpty
             className="h-9 border max-md:h-11"
             onCommit={(name) =>
-              updateType.mutate({
-                id: typeId,
-                changes: { statusNames: { ...statusNames, [status]: name } },
-              })
+              renameStatus.mutate({ id: typeId, status, name })
             }
           />
         </div>

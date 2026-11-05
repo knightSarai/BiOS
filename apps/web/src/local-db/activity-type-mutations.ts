@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import type { FieldKind } from "@/activities/fields"
+import type { ActivityStatus } from "@/activities/status"
 import type { ActivityTypeChanges, NewActivityType } from "./activity-types"
 import { activityKeys, activityTypesRepository } from "./activity-queries"
 
@@ -31,6 +32,23 @@ const useUpdateActivityType = (workspaceId: string) => {
       id: string
       changes: ActivityTypeChanges
     }) => activityTypesRepository(workspaceId).update(id, changes),
+    onSuccess: invalidate,
+  })
+}
+
+const useRenameTypeStatus = (workspaceId: string) => {
+  const invalidate = useInvalidateActivities(workspaceId)
+  return useMutation({
+    networkMode: "always",
+    mutationFn: ({
+      id,
+      status,
+      name,
+    }: {
+      id: string
+      status: ActivityStatus
+      name: string
+    }) => activityTypesRepository(workspaceId).renameStatus(id, status, name),
     onSuccess: invalidate,
   })
 }
@@ -114,6 +132,7 @@ export {
   useDeleteActivityType,
   useRemoveTypeField,
   useRenameTypeField,
+  useRenameTypeStatus,
   useChangeFieldOption,
   useUpdateActivityType,
 }

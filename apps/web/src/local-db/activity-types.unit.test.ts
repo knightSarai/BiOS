@@ -101,6 +101,25 @@ describe("ActivityTypesRepository", () => {
     })
   })
 
+  it("keeps every status name when several are renamed at once", async () => {
+    const { types, book } = await setupBook()
+    await Promise.all([
+      types.renameStatus(book.id, "backlog", "Want to read"),
+      types.renameStatus(book.id, "progress", "Reading"),
+      types.renameStatus(book.id, "done", " Read "),
+    ])
+    expect((await types.byId(book.id))?.statusNames).toEqual({
+      backlog: "Want to read",
+      progress: "Reading",
+      done: "Read",
+    })
+    await types.renameStatus(book.id, "progress", "")
+    expect((await types.byId(book.id))?.statusNames).toEqual({
+      backlog: "Want to read",
+      done: "Read",
+    })
+  })
+
   it("renaming a field keeps every stored value", async () => {
     const { types, activities, home, book, author } = await setupBook()
     const row = await createOne(

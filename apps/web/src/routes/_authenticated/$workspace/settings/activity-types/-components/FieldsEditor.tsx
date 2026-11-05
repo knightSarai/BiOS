@@ -69,6 +69,7 @@ function OptionsEditor({
             type="button"
             variant="ghost"
             size="icon-xs"
+            className="max-md:size-11"
             aria-label={`Remove option ${option.label}`}
             onClick={() =>
               changeOption.mutate({

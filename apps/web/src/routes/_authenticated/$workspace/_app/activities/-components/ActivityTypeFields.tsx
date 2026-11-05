@@ -35,7 +35,7 @@ type PendingTypeChange = {
   fromName: string
   toTypeId: string | null
   toName: string
-  lost: { name: string; value: string }[]
+  lost: { id: string; name: string; value: string }[]
 }
 
 const pendingTypeChangeAtom = atom<PendingTypeChange | null>(null)
@@ -84,6 +84,7 @@ function TypeControl({
             types.find((candidate) => candidate.id === typeId)?.name ??
             "No type",
           lost: lost.map((field) => ({
+            id: field.id,
             name: field.name,
             value: formatFieldValue(field, activity.fields[field.id]),
           })),
@@ -133,7 +134,7 @@ function ChangeTypeDialog({ workspaceId }: { workspaceId: string }) {
         <dl className="divide-y rounded-lg border text-sm">
           {pending?.lost.map((entry) => (
             <div
-              key={entry.name}
+              key={entry.id}
               className="grid grid-cols-[96px_minmax(0,1fr)] gap-3 px-3 py-2"
             >
               <dt className="text-muted-foreground">{entry.name}</dt>
@@ -152,11 +153,17 @@ function ChangeTypeDialog({ workspaceId }: { workspaceId: string }) {
             variant="destructive"
             onClick={() => {
               if (pending) {
-                changeType.mutate({
-                  id: pending.activityId,
-                  typeId: pending.toTypeId,
-                })
-                toast.success(`${pending.activityKey} is now ${pending.toName}`)
+                changeType.mutate(
+                  { id: pending.activityId, typeId: pending.toTypeId },
+                  {
+                    onSuccess: () =>
+                      toast.success(
+                        `${pending.activityKey} is now ${pending.toName}`
+                      ),
+                    onError: () =>
+                      toast.error(`Couldn't change ${pending.activityKey}.`),
+                  }
+                )
               }
               setPending(null)
             }}

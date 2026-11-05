@@ -6,6 +6,7 @@ import { z } from "zod"
 import { areaDotClassNames } from "@/activities/areas"
 import { openNewActivityAtom } from "@/activities/new-activity"
 import { Button } from "@/components/ui/button"
+import { Kbd } from "@/components/ui/kbd"
 import { EmptyState } from "@/components/common/EmptyState"
 import { activityListQuery, areasQuery } from "@/local-db/activity-queries"
 import { cn } from "@/lib/utils"
@@ -51,6 +52,9 @@ function ActivitiesPage() {
           </Page.Title>
         </Page.HeaderContent>
         <Page.HeaderActions>
+          <span className="text-xs text-muted-foreground max-md:hidden">
+            Press <Kbd>C</Kbd>
+          </span>
           <Button
             onClick={() =>
               openNewActivity({ areaId: areaId ?? null, goalId: null })

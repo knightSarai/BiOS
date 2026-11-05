@@ -1,5 +1,5 @@
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router"
-import { ChevronLeft, SlidersHorizontal, Settings2 } from "lucide-react"
+import { ChevronLeft, SlidersHorizontal, Settings2, Tag } from "lucide-react"
 import type { NavSection } from "@layout/nav-types"
 import { AppShell, MobileNavButton } from "@layout/core/AppShell"
 import { resolveNav } from "@layout/resolve-nav"
@@ -23,6 +23,11 @@ const nav: NavSection[] = [
         label: "General",
         route: "/settings/general",
         permission: { workspaceSettings: ["view"] },
+      },
+      {
+        icon: Tag,
+        label: "Activity types",
+        route: "/settings/activity-types",
       },
     ],
   },

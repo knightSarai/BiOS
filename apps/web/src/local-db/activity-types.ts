@@ -156,6 +156,32 @@ class ActivityTypesRepository {
   }
 
   setFieldOptions(fieldId: string, options: OptionInput[]) {
+    return this.changeOptions(fieldId, () => options)
+  }
+
+  addOption(fieldId: string, label: string) {
+    return this.changeOptions(fieldId, (options) => [...options, { label }])
+  }
+
+  renameOption(fieldId: string, optionId: string, label: string) {
+    return this.changeOptions(fieldId, (options) =>
+      options.map((option) =>
+        option.id === optionId ? { ...option, label } : option
+      )
+    )
+  }
+
+  removeOption(fieldId: string, optionId: string) {
+    return this.changeOptions(fieldId, (options) =>
+      options.filter((option) => option.id !== optionId)
+    )
+  }
+
+  // Reads the stored options inside the transaction, so quick edits in a row don't overwrite each other.
+  private changeOptions(
+    fieldId: string,
+    change: (options: FieldOption[]) => OptionInput[]
+  ) {
     return this.db.transaction(
       "rw",
       this.db.activityTypeFields,
@@ -167,7 +193,7 @@ class ActivityTypesRepository {
           throw new Error("Only choice fields have options.")
         }
         await this.db.activityTypeFields.update(fieldId, {
-          options: toOptions(options),
+          options: toOptions(change(field.options)),
           updatedAt: parseUtc(now()),
         })
         await this.revalidateValues(field.typeId)
@@ -185,6 +211,35 @@ class ActivityTypesRepository {
         if (!field) return
         await this.db.activityTypeFields.delete(fieldId)
         await this.revalidateValues(field.typeId)
+      }
+    )
+  }
+
+  async activityCount(typeId: string) {
+    return this.db.activities
+      .where("typeId")
+      .equals(typeId)
+      .filter((row) => row.workspaceId === this.ctx.workspaceId)
+      .count()
+  }
+
+  delete(typeId: string) {
+    return this.db.transaction(
+      "rw",
+      [this.db.activityTypes, this.db.activityTypeFields, this.db.activities],
+      async () => {
+        if (!(await this.byId(typeId))) return
+        const timestamp = parseUtc(now())
+        await this.db.activities
+          .where("typeId")
+          .equals(typeId)
+          .filter((row) => row.workspaceId === this.ctx.workspaceId)
+          .modify({ typeId: null, fields: {}, updatedAt: timestamp })
+        await this.db.activityTypeFields
+          .where("[workspaceId+typeId]")
+          .equals([this.ctx.workspaceId, typeId])
+          .delete()
+        await this.db.activityTypes.delete(typeId)
       }
     )
   }

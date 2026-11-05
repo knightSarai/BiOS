@@ -16,6 +16,22 @@ const areaDotClassNames: Record<AreaColor, string> = {
   "chart-5": "bg-chart-5",
 }
 
+const areaColorNames: Record<AreaColor, string> = {
+  "chart-1": "Plum",
+  "chart-2": "Rose",
+  "chart-3": "Blue",
+  "chart-4": "Amber",
+  "chart-5": "Teal",
+}
+
+const areaTextClassNames: Record<AreaColor, string> = {
+  "chart-1": "text-chart-1",
+  "chart-2": "text-chart-2",
+  "chart-3": "text-chart-3",
+  "chart-4": "text-chart-4",
+  "chart-5": "text-chart-5",
+}
+
 const AREA_KEY_PATTERN = /^[A-Z]{2,5}$/
 
 const areaKeyFromName = (name: string) =>
@@ -31,7 +47,9 @@ export {
   AREA_COLORS,
   AREA_KEY_PATTERN,
   activityKey,
+  areaColorNames,
   areaDotClassNames,
+  areaTextClassNames,
   areaKeyFromName,
 }
 export type { AreaColor }

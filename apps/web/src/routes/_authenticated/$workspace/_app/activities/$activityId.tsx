@@ -25,6 +25,10 @@ import {
   ActivityProperties,
   ActivityPropertyChips,
 } from "./-components/ActivityProperties"
+import {
+  ActivityFields,
+  ChangeTypeDialog,
+} from "./-components/ActivityTypeFields"
 import { ActivityCrumb } from "./-components/ActivityCrumb"
 
 const BLOCK_HASH_PREFIX = "block-"
@@ -123,6 +127,11 @@ function ActivityPage() {
                     activity={activity}
                     workspace={propertiesWorkspace}
                   />
+                  <ActivityFields
+                    activity={activity}
+                    workspace={propertiesWorkspace}
+                    className="mb-6"
+                  />
                 </div>
               }
             />
@@ -140,6 +149,11 @@ function ActivityPage() {
               activity={activity}
               workspace={propertiesWorkspace}
             />
+            <ActivityFields
+              activity={activity}
+              workspace={propertiesWorkspace}
+              className="border-t pt-4"
+            />
             <EntityDocumentsPanel
               owner={{ kind: "activity", id: activityId }}
               workspace={documentsWorkspace}
@@ -148,6 +162,7 @@ function ActivityPage() {
           </aside>
         </div>
       </Page.ScrollArea>
+      <ChangeTypeDialog workspaceId={workspace.id} />
     </Page.Layout>
   )
 }

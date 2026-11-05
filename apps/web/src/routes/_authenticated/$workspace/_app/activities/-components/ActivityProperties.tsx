@@ -13,7 +13,7 @@ import { DueDateMenu } from "@/activities/components/DueDateMenu"
 import { GoalMenu } from "@/activities/components/GoalMenu"
 import { StatusIcon } from "@/activities/components/StatusIcon"
 import { StatusMenu } from "@/activities/components/StatusMenu"
-import { statusLabels } from "@/activities/status"
+import { statusName } from "@/activities/activity-types"
 import { GoalIcon } from "@/goals/components/GoalIcon"
 import {
   useMoveActivityToArea,
@@ -26,6 +26,7 @@ import { activityQuery, areasQuery } from "@/local-db/activity-queries"
 import type { ActivityOrigin, ActivityRow } from "@/local-db/db"
 import { documentQuery } from "@/local-db/document-queries"
 import { cn } from "@/lib/utils"
+import { TypeControl, useActivityType } from "./ActivityTypeFields"
 
 type Workspace = {
   id: string
@@ -134,10 +135,12 @@ function StatusControl({
   className,
 }: PropertyControlProps) {
   const setStatus = useSetActivityStatus(workspace.id)
-  const label = statusLabels[activity.status]
+  const { type } = useActivityType(activity, workspace.id)
+  const label = statusName(activity.status, type?.statusNames ?? null)
   return (
     <StatusMenu
       status={activity.status}
+      names={type?.statusNames ?? null}
       onChange={(status) => setStatus.mutate({ id: activity.id, status })}
       trigger={
         <button
@@ -266,7 +269,14 @@ function CreatedAt({ activity, workspace, className }: PropertyControlProps) {
   )
 }
 
+function useActivityKey(activity: ActivityRow, workspace: Workspace) {
+  const { data: areas } = useSuspenseQuery(areasQuery(workspace))
+  const area = areas.find((candidate) => candidate.id === activity.areaId)
+  return activityKey(area?.key ?? "?", activity.number)
+}
+
 function ActivityProperties({ activity, workspace }: ActivityPropertiesProps) {
+  const key = useActivityKey(activity, workspace)
   return (
     <div className="flex flex-col gap-1 text-sm">
       <Property label="Created">
@@ -274,6 +284,14 @@ function ActivityProperties({ activity, workspace }: ActivityPropertiesProps) {
           activity={activity}
           workspace={workspace}
           className="flex min-h-8 items-center px-2 text-muted-foreground"
+        />
+      </Property>
+      <Property label="Type">
+        <TypeControl
+          activity={activity}
+          activityKey={key}
+          workspace={workspace}
+          className={propertyButtonClassName}
         />
       </Property>
       <Property label="Status">
@@ -321,12 +339,19 @@ function ActivityPropertyChips({
   activity,
   workspace,
 }: ActivityPropertiesProps) {
+  const key = useActivityKey(activity, workspace)
   return (
     <div className="mb-6 flex flex-wrap items-center gap-2 text-sm">
       <CreatedAt
         activity={activity}
         workspace={workspace}
         className="px-1 text-muted-foreground"
+      />
+      <TypeControl
+        activity={activity}
+        activityKey={key}
+        workspace={workspace}
+        className={chipClassName}
       />
       <StatusControl
         activity={activity}

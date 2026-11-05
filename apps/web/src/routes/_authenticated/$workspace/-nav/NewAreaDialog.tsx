@@ -4,6 +4,7 @@ import { z } from "zod"
 import {
   AREA_COLORS,
   AREA_KEY_PATTERN,
+  areaColorNames,
   areaKeyFromName,
   type AreaColor,
 } from "@/activities/areas"
@@ -19,14 +20,6 @@ import { FieldGroup } from "@/components/ui/field"
 import { useAppForm } from "@/hooks/form"
 import { useCreateArea } from "@/local-db/activity-mutations"
 import { newAreaDialogOpenAtom } from "./atoms"
-
-const colorNames: Record<AreaColor, string> = {
-  "chart-1": "Plum",
-  "chart-2": "Rose",
-  "chart-3": "Blue",
-  "chart-4": "Amber",
-  "chart-5": "Teal",
-}
 
 const newAreaSchema = z.object({
   name: z.string().trim().min(1, "Give the area a name."),
@@ -122,7 +115,7 @@ function NewAreaDialog({ workspaceId }: NewAreaDialogProps) {
                   label="Color"
                   options={AREA_COLORS.map((color) => ({
                     value: color,
-                    label: colorNames[color],
+                    label: areaColorNames[color],
                   }))}
                 />
               )}

@@ -1,7 +1,8 @@
 import { Suspense, useRef } from "react"
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query"
-import { useNavigate } from "@tanstack/react-router"
-import { useAtom } from "jotai"
+import { useHotkey } from "@tanstack/react-hotkeys"
+import { Link, useNavigate, useSearch } from "@tanstack/react-router"
+import { atom, useAtom } from "jotai"
 import { CalendarDays, ChevronRight, Target, XIcon } from "lucide-react"
 import { toast } from "sonner"
 import { z } from "zod"
@@ -21,7 +22,7 @@ import { Switch } from "@/components/ui/switch"
 import { GoalIcon } from "@/goals/components/GoalIcon"
 import { useAppForm } from "@/hooks/form"
 import { useCreateActivities } from "@/local-db/activity-mutations"
-import { areasQuery } from "@/local-db/activity-queries"
+import { activityTypesQuery, areasQuery } from "@/local-db/activity-queries"
 import { goalListQuery } from "@/local-db/goal-queries"
 import { cn } from "@/lib/utils"
 import { areaDotClassNames } from "../areas"
@@ -30,12 +31,17 @@ import {
   newActivityAtom,
   type NewActivityRequest,
 } from "../new-activity"
-import { ACTIVITY_STATUSES, statusLabels } from "../status"
+import { statusName } from "../activity-types"
+import type { FieldValue } from "../fields"
+import { ACTIVITY_STATUSES } from "../status"
 import { AreaMenu } from "./AreaMenu"
 import { DueDateMenu } from "./DueDateMenu"
+import { FieldInput } from "./FieldInput"
 import { GoalMenu } from "./GoalMenu"
 import { StatusIcon } from "./StatusIcon"
 import { StatusMenu } from "./StatusMenu"
+import { TypeIcon } from "./TypeIcon"
+import { TypeMenu } from "./TypeMenu"
 
 type NewActivityWorkspace = {
   id: string
@@ -51,7 +57,13 @@ const newActivitySchema = z.object({
   areaId: z.string(),
   goalId: z.string().nullable(),
   dueDate: z.string().nullable(),
+  typeId: z.string().nullable(),
+  fields: z.record(z.string(), z.unknown()),
 })
+
+const fieldsOpenAtom = atom(true)
+
+const noFieldValues: Record<string, unknown> = {}
 
 const chipClassName =
   "h-[30px] gap-1.5 rounded-md px-2.5 text-[13px] font-normal max-md:h-11"
@@ -71,6 +83,8 @@ function NewActivityForm({
   const [createMore, setCreateMore] = useAtom(createMoreAtom)
   const { data: areas } = useSuspenseQuery(areasQuery(workspace))
   const { data: goals } = useQuery(goalListQuery(workspace.id))
+  const { data: types } = useQuery(activityTypesQuery(workspace.id))
+  const [fieldsOpen, setFieldsOpen] = useAtom(fieldsOpenAtom)
   const createActivities = useCreateActivities(workspace.id)
   const titleRef = useRef<HTMLInputElement>(null)
 
@@ -94,6 +108,8 @@ function NewActivityForm({
       areaId: request.areaId ?? areas[0]?.id ?? "",
       goalId: request.goalId,
       dueDate: null as string | null,
+      typeId: null as string | null,
+      fields: noFieldValues,
     },
     validators: {
       onSubmit: newActivitySchema,
@@ -121,7 +137,7 @@ function NewActivityForm({
         return
       }
       form.reset(
-        { ...value, title: "", notes: "" },
+        { ...value, title: "", notes: "", fields: {} },
         { keepDefaultValues: true }
       )
       titleRef.current?.focus()
@@ -141,6 +157,10 @@ function NewActivityForm({
           }
         }}
       >
+        <div
+          aria-hidden
+          className="mx-auto mt-2 h-1 w-9 rounded-full bg-border md:hidden"
+        />
         <div className="flex items-center justify-between px-4 pt-3.5">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <form.Subscribe selector={(state) => state.values.areaId}>
@@ -234,27 +254,68 @@ function NewActivityForm({
         </div>
 
         <div className="flex flex-wrap gap-1.5 px-5 pt-2 pb-3.5">
-          <form.Field name="status">
-            {(field) => (
-              <StatusMenu
-                status={field.state.value}
-                onChange={field.handleChange}
-                trigger={
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className={chipClassName}
-                    aria-label={`Status: ${statusLabels[field.state.value]}`}
-                  >
-                    <span data-icon="inline-start" className="flex">
-                      <StatusIcon status={field.state.value} />
-                    </span>
-                    {statusLabels[field.state.value]}
-                  </Button>
-                }
-              />
-            )}
+          <form.Field name="typeId">
+            {(field) => {
+              const type = types?.find(
+                (candidate) => candidate.id === field.state.value
+              )
+              return (
+                <TypeMenu
+                  types={types ?? []}
+                  value={field.state.value}
+                  workspaceId={workspace.id}
+                  onChange={(typeId) => {
+                    field.handleChange(typeId)
+                    form.setFieldValue("fields", {})
+                  }}
+                  trigger={
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className={cn(chipClassName, !type && emptyChipClassName)}
+                      aria-label={`Type: ${type?.name ?? "None"}`}
+                    >
+                      <span data-icon="inline-start" className="flex">
+                        <TypeIcon color={type?.color ?? null} />
+                      </span>
+                      {type?.name ?? "Type"}
+                    </Button>
+                  }
+                />
+              )
+            }}
           </form.Field>
+          <form.Subscribe selector={(state) => state.values.typeId}>
+            {(typeId) => {
+              const names =
+                types?.find((candidate) => candidate.id === typeId)
+                  ?.statusNames ?? null
+              return (
+                <form.Field name="status">
+                  {(field) => (
+                    <StatusMenu
+                      status={field.state.value}
+                      names={names}
+                      onChange={field.handleChange}
+                      trigger={
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className={chipClassName}
+                          aria-label={`Status: ${statusName(field.state.value, names)}`}
+                        >
+                          <span data-icon="inline-start" className="flex">
+                            <StatusIcon status={field.state.value} />
+                          </span>
+                          {statusName(field.state.value, names)}
+                        </Button>
+                      }
+                    />
+                  )}
+                </form.Field>
+              )
+            }}
+          </form.Subscribe>
           <form.Field name="areaId">
             {(field) => {
               const area = areas.find(
@@ -347,8 +408,89 @@ function NewActivityForm({
           </form.Field>
         </div>
 
-        <div className="flex items-center justify-between gap-3 border-t px-4 py-3">
-          <Field orientation="horizontal" className="w-auto">
+        <form.Subscribe selector={(state) => state.values.typeId}>
+          {(typeId) => {
+            const type = types?.find((candidate) => candidate.id === typeId)
+            if (!type) return null
+            return (
+              <div className="mx-5 mb-4 flex flex-col gap-3 rounded-lg border p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    aria-expanded={fieldsOpen}
+                    onClick={() => setFieldsOpen(!fieldsOpen)}
+                    className="flex min-h-7 items-center gap-1.5 text-xs font-semibold text-muted-foreground max-md:min-h-11"
+                  >
+                    <ChevronRight
+                      aria-hidden
+                      className={cn(
+                        "size-3 transition-transform",
+                        fieldsOpen && "rotate-90"
+                      )}
+                    />
+                    {type.name} fields
+                    {fieldsOpen ? null : (
+                      <span className="font-normal">
+                        ·{" "}
+                        {type.fields.length === 1
+                          ? "1 field"
+                          : `${type.fields.length} fields`}
+                      </span>
+                    )}
+                  </button>
+                  <Link
+                    to="/$workspace/settings/activity-types/$typeId"
+                    params={{ workspace: workspace.slug, typeId: type.id }}
+                    className="text-xs text-accent-text hover:underline"
+                  >
+                    {type.fields.length === 0
+                      ? "Add fields in Settings"
+                      : "Edit in Settings"}
+                  </Link>
+                </div>
+                {fieldsOpen && type.fields.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    {type.name} has no fields yet.
+                  </p>
+                ) : null}
+                {fieldsOpen && type.fields.length > 0 ? (
+                  <form.Field name="fields">
+                    {(field) => (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {type.fields.map((definition) => (
+                          <FieldInput
+                            key={definition.id}
+                            field={definition}
+                            value={
+                              field.state.value[definition.id] as
+                                FieldValue | undefined
+                            }
+                            timezone={workspace.timezone}
+                            onChange={(next) => {
+                              const rest = Object.fromEntries(
+                                Object.entries(field.state.value).filter(
+                                  ([id]) => id !== definition.id
+                                )
+                              )
+                              field.handleChange(
+                                next === null || next === ""
+                                  ? rest
+                                  : { ...rest, [definition.id]: next }
+                              )
+                            }}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </form.Field>
+                ) : null}
+              </div>
+            )
+          }}
+        </form.Subscribe>
+
+        <div className="flex items-center justify-between gap-3 border-t px-4 py-3 max-md:sticky max-md:bottom-0 max-md:bg-popover max-md:pb-7">
+          <Field orientation="horizontal" className="w-auto max-md:hidden">
             <Switch
               id="create-more"
               checked={createMore}
@@ -361,13 +503,13 @@ function NewActivityForm({
               Create more
             </FieldLabel>
           </Field>
-          <div className="flex gap-2">
+          <div className="flex gap-2 max-md:flex-1">
             <DialogClose
               render={
                 <Button
                   type="button"
                   variant="outline"
-                  className="max-md:h-11"
+                  className="max-md:hidden"
                 />
               }
             >
@@ -378,7 +520,7 @@ function NewActivityForm({
                 <Button
                   type="submit"
                   disabled={isSubmitting}
-                  className="max-md:h-11"
+                  className="max-md:h-12 max-md:flex-1"
                 >
                   Create activity
                   <kbd className="font-sans text-[11px] opacity-80 max-md:hidden">
@@ -396,6 +538,16 @@ function NewActivityForm({
 
 function NewActivityDialog({ workspace }: { workspace: NewActivityWorkspace }) {
   const [{ open, request }, setDialog] = useAtom(newActivityAtom)
+  const search: { area?: string } = useSearch({ strict: false })
+  useHotkey(
+    "C",
+    () =>
+      setDialog({
+        open: true,
+        request: { areaId: search.area ?? null, goalId: null },
+      }),
+    { enabled: !open }
+  )
 
   return (
     <Dialog
@@ -407,7 +559,7 @@ function NewActivityDialog({ workspace }: { workspace: NewActivityWorkspace }) {
     >
       <DialogContent
         showCloseButton={false}
-        className="top-[72px] translate-y-0 gap-0 p-0 text-sm sm:max-w-[860px]"
+        className="top-[72px] translate-y-0 gap-0 p-0 text-sm max-md:top-auto max-md:bottom-0 max-md:left-0 max-md:max-h-[90dvh] max-md:max-w-full max-md:translate-x-0 max-md:overflow-y-auto max-md:rounded-b-none sm:max-w-[860px] max-md:data-open:zoom-in-100 max-md:data-open:slide-in-from-bottom max-md:data-closed:zoom-out-100 max-md:data-closed:slide-out-to-bottom"
       >
         {request ? (
           <Suspense fallback={<Skeleton className="m-5 h-36" />}>

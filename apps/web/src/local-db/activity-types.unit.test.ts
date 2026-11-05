@@ -27,7 +27,7 @@ const setup = async (workspaceId = "ws-1") => {
 
 const setupBook = async () => {
   const context = await setup()
-  const book = await context.types.create({ name: " Book ", color: "purple" })
+  const book = await context.types.create({ name: " Book ", color: "chart-1" })
   const author = await context.types.addField(book.id, {
     name: "Author",
     kind: "text",
@@ -68,7 +68,7 @@ describe("ActivityTypesRepository", () => {
     const { types, book, author, format } = await setupBook()
     expect(await types.byId(book.id)).toMatchObject({
       name: "Book",
-      color: "purple",
+      color: "chart-1",
       icon: null,
       statusNames: {},
     })
@@ -82,7 +82,9 @@ describe("ActivityTypesRepository", () => {
 
   it("requires names for types and fields", async () => {
     const { types, book } = await setupBook()
-    await expect(types.create({ name: "  ", color: "gray" })).rejects.toThrow()
+    await expect(
+      types.create({ name: "  ", color: "chart-2" })
+    ).rejects.toThrow()
     await expect(
       types.addField(book.id, { name: "", kind: "number" })
     ).rejects.toThrow()
@@ -156,6 +158,23 @@ describe("ActivityTypesRepository", () => {
     })
   })
 
+  it("keeps every option when several are added, renamed or removed at once", async () => {
+    const { types, book, format } = await setupBook()
+    const [paper, ebook] = format.options
+    await Promise.all([
+      types.addOption(format.id, "Audio"),
+      types.addOption(format.id, "Comic"),
+      types.renameOption(format.id, paper?.id ?? "", "Hardback"),
+      types.removeOption(format.id, ebook?.id ?? ""),
+    ])
+    const [, saved] = await types.fields(book.id)
+    expect(saved?.options.map((option) => option.label)).toEqual([
+      "Hardback",
+      "Audio",
+      "Comic",
+    ])
+  })
+
   it("only choice fields take options, and an option id is kept once", async () => {
     const { types, book, author, format } = await setupBook()
     const pages = await types.addField(book.id, {
@@ -176,6 +195,27 @@ describe("ActivityTypesRepository", () => {
     expect(saved?.options).toEqual([{ id: paper?.id, label: "Paper" }])
   })
 
+  it("deleting a type leaves its activities with no type and no field values", async () => {
+    const { types, activities, home, book, author } = await setupBook()
+    const row = await createOne(
+      activities,
+      newActivity(home.id, "DDIA", {
+        typeId: book.id,
+        status: "progress",
+        fields: { [author.id]: "Martin Kleppmann" },
+      })
+    )
+    expect(await types.activityCount(book.id)).toBe(1)
+    await types.delete(book.id)
+    expect(await types.byId(book.id)).toBeNull()
+    expect(await types.fields(book.id)).toEqual([])
+    expect(await activities.byId(row.id)).toMatchObject({
+      typeId: null,
+      fields: {},
+      status: "progress",
+    })
+  })
+
   it("never reads or changes another workspace's types", async () => {
     const { db, book, author } = await setupBook()
     const other = new ActivityTypesRepository(db, { workspaceId: "ws-2" })
@@ -184,6 +224,7 @@ describe("ActivityTypesRepository", () => {
     expect(await other.fields(book.id)).toEqual([])
     await other.renameField(author.id, "Hijacked")
     await other.removeField(author.id)
+    await other.delete(book.id)
     await expect(
       other.addField(book.id, { name: "Sneaky", kind: "text" })
     ).rejects.toThrow()
@@ -280,7 +321,7 @@ describe("activities with a type, fields and a due date", () => {
 
   it("refuses a value for a field that is not on the activity's type", async () => {
     const { types, activities, home, author } = await setupBook()
-    const article = await types.create({ name: "Article", color: "rose" })
+    const article = await types.create({ name: "Article", color: "chart-3" })
     const row = await createOne(
       activities,
       newActivity(home.id, "Read later", { typeId: article.id })
@@ -292,7 +333,7 @@ describe("activities with a type, fields and a due date", () => {
 
   it("changing type drops the old type's values and keeps status and due date", async () => {
     const { types, activities, home, book, author } = await setupBook()
-    const article = await types.create({ name: "Article", color: "rose" })
+    const article = await types.create({ name: "Article", color: "chart-3" })
     const row = await createOne(
       activities,
       newActivity(home.id, "DDIA", {

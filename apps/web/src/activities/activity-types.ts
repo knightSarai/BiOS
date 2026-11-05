@@ -1,8 +1,9 @@
+import { AREA_COLORS, type AreaColor } from "./areas"
 import { ACTIVITY_STATUSES, statusLabels, type ActivityStatus } from "./status"
 
-const TYPE_COLORS = ["gray", "teal", "purple", "rose", "blue", "amber"] as const
+const TYPE_COLORS = AREA_COLORS
 
-type TypeColor = (typeof TYPE_COLORS)[number]
+type TypeColor = AreaColor
 
 type StatusNames = Partial<Record<ActivityStatus, string>>
 

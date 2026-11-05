@@ -148,6 +148,33 @@ const useSetActivityDueDate = (workspaceId: string) => {
   })
 }
 
+const useSetActivityField = (workspaceId: string) => {
+  const invalidate = useInvalidateActivities(workspaceId)
+  return useMutation({
+    networkMode: "always",
+    mutationFn: ({
+      id,
+      fieldId,
+      value,
+    }: {
+      id: string
+      fieldId: string
+      value: unknown
+    }) => activitiesRepository(workspaceId).setFieldValue(id, fieldId, value),
+    onSuccess: invalidate,
+  })
+}
+
+const useChangeActivityType = (workspaceId: string) => {
+  const invalidate = useInvalidateActivities(workspaceId)
+  return useMutation({
+    networkMode: "always",
+    mutationFn: ({ id, typeId }: { id: string; typeId: string | null }) =>
+      activitiesRepository(workspaceId).changeType(id, typeId),
+    onSuccess: invalidate,
+  })
+}
+
 const useDeleteActivity = (workspaceId: string, id: string) => {
   const queryClient = useQueryClient()
   return useMutation({
@@ -169,8 +196,10 @@ export {
   useDeleteActivity,
   useCreateArea,
   useMoveActivityToArea,
+  useChangeActivityType,
   useSaveActivityContent,
   useSetActivityDueDate,
+  useSetActivityField,
   useSetActivityGoal,
   useSetActivityStatus,
   useSyncActivityTitle,

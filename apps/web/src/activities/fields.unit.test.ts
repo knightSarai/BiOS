@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   InvalidFieldValueError,
+  formatFieldValue,
   keepValidValues,
   parseFieldValues,
   setFieldValue,
@@ -113,5 +114,20 @@ describe("valuesLostOnTypeChange", () => {
       "author",
       "rating",
     ])
+  })
+})
+
+describe("formatFieldValue", () => {
+  it.each([
+    [author, "Martin Kleppmann", "Martin Kleppmann"],
+    [pages, 616, "616"],
+    [finished, "2026-10-24", "Sat 24 Oct"],
+    [format, "opt-1", "Ebook"],
+    [format, "gone", "Removed option"],
+    [tags, ["opt-0", "opt-1"], "Systems, Databases"],
+    [signed, true, "Yes"],
+    [rating, 4, "4 of 5"],
+  ])("shows a %s value as text", (definition, value, text) => {
+    expect(formatFieldValue(definition, value)).toBe(text)
   })
 })

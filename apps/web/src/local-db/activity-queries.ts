@@ -1,5 +1,6 @@
 import { queryOptions } from "@tanstack/react-query"
 import { ActivitiesRepository } from "./activities"
+import { ActivityTypesRepository } from "./activity-types"
 import { AreasRepository } from "./areas"
 import { getLocalDb } from "./db"
 
@@ -8,6 +9,9 @@ const activitiesRepository = (workspaceId: string) =>
 
 const areasRepository = (workspaceId: string) =>
   new AreasRepository(getLocalDb(), { workspaceId })
+
+const activityTypesRepository = (workspaceId: string) =>
+  new ActivityTypesRepository(getLocalDb(), { workspaceId })
 
 const activityKeys = {
   all: (workspaceId: string) =>
@@ -20,6 +24,10 @@ const activityKeys = {
     [...activityKeys.all(workspaceId), "summary", id] as const,
   areas: (workspaceId: string) =>
     [...activityKeys.all(workspaceId), "areas"] as const,
+  types: (workspaceId: string) =>
+    [...activityKeys.all(workspaceId), "types"] as const,
+  type: (workspaceId: string, id: string) =>
+    [...activityKeys.types(workspaceId), id] as const,
 }
 
 type WorkspaceRef = {
@@ -77,8 +85,45 @@ const activitySummaryQuery = (workspaceId: string, id: string) =>
     staleTime: 0,
   })
 
+const activityTypesQuery = (workspaceId: string) =>
+  queryOptions({
+    queryKey: activityKeys.types(workspaceId),
+    queryFn: async () => {
+      const types = activityTypesRepository(workspaceId)
+      const rows = await types.list()
+      return Promise.all(
+        rows.map(async (type) => ({
+          ...type,
+          fields: await types.fields(type.id),
+        }))
+      )
+    },
+    networkMode: "always",
+    staleTime: 0,
+  })
+
+const activityTypeQuery = (workspaceId: string, id: string) =>
+  queryOptions({
+    queryKey: activityKeys.type(workspaceId, id),
+    queryFn: async () => {
+      const types = activityTypesRepository(workspaceId)
+      const type = await types.byId(id)
+      if (!type) return null
+      const [fields, activityCount] = await Promise.all([
+        types.fields(id),
+        types.activityCount(id),
+      ])
+      return { type, fields, activityCount }
+    },
+    networkMode: "always",
+    staleTime: 0,
+  })
+
 export {
   activitiesRepository,
+  activityTypeQuery,
+  activityTypesQuery,
+  activityTypesRepository,
   activityKeys,
   activityListQuery,
   activityQuery,

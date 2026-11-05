@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { isCivilDate } from "@knight-os/server/core"
+import { formatDayLabel, isCivilDate } from "@knight-os/server/core"
 
 const FIELD_KINDS = [
   "text",
@@ -115,9 +115,33 @@ const keepValidValues = (
 const kindHasOptions = (kind: FieldKind) =>
   kind === "choice" || kind === "multiChoice"
 
+const optionLabel = (field: FieldDefinition, id: string) =>
+  field.options.find((option) => option.id === id)?.label ?? "Removed option"
+
+const formatFieldValue = (field: FieldDefinition, value: FieldValue) => {
+  switch (field.kind) {
+    case "date":
+      return typeof value === "string" ? formatDayLabel(value) : String(value)
+    case "choice":
+      return typeof value === "string"
+        ? optionLabel(field, value)
+        : String(value)
+    case "multiChoice":
+      return Array.isArray(value)
+        ? value.map((id) => optionLabel(field, id)).join(", ")
+        : String(value)
+    case "checkbox":
+      return value === true ? "Yes" : "No"
+    case "rating":
+      return `${String(value)} of 5`
+    default:
+      return String(value)
+  }
+}
+
 // Fields belong to one type, so a type change loses every value the old type had set.
-const valuesLostOnTypeChange = (
-  fields: FieldDefinition[],
+const valuesLostOnTypeChange = <Field extends FieldDefinition>(
+  fields: Field[],
   values: FieldValues
 ) => fields.filter((field) => field.id in values)
 
@@ -125,6 +149,7 @@ export {
   FIELD_KINDS,
   InvalidFieldValueError,
   fieldKindLabels,
+  formatFieldValue,
   keepValidValues,
   kindHasOptions,
   parseFieldValues,

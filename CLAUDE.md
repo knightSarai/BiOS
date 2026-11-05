@@ -43,10 +43,11 @@ Purpose: These rules define my personal coding style and architectural preferenc
 ## Workflow
 
 - Work off `main` unless the operator says otherwise.
-- Agents never push without the operator's explicit per-request instruction; permission is single-use.
+- Agents never push without the operator's explicit per-request instruction; permission is single-use. "Done" and "push" are that instruction; "commit" is not — commit only, never push.
 - Agents never commit until the operator has reviewed the diff.
+- Commit only the current session's own changes — stage files explicitly; leave other uncommitted work in the tree untouched.
 - Never weaken CI to make something pass (skip tests, lower thresholds, gate checks behind conditions) — hard stop, ask first.
-- When the user says the task is done, archive the task and delete the worktree.
+- When the user says the task is done, commit the session's changes and push them to `main` (from a worktree, land the commit on `main`), then archive the task and delete the worktree.
 
 ## Research & Verification
 

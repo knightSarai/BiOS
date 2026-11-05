@@ -42,6 +42,7 @@ Purpose: These rules define my personal coding style and architectural preferenc
 
 ## Workflow
 
+- Work off `main` unless the operator says otherwise.
 - Agents never push without the operator's explicit per-request instruction; permission is single-use.
 - Agents never commit until the operator has reviewed the diff.
 - Never weaken CI to make something pass (skip tests, lower thresholds, gate checks behind conditions) — hard stop, ask first.

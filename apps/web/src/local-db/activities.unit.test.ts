@@ -182,6 +182,35 @@ describe("activity content", () => {
   })
 })
 
+describe("notes written when creating an activity", () => {
+  it("go into the body as one paragraph per line after the title", async () => {
+    const { activities, home } = await setup()
+    const [created] = await activities.createMany([
+      {
+        ...newActivity(home.id, "Book a sparring session"),
+        notes: "Light technical sparring only.\nPack gloves",
+      },
+    ])
+    const row = await activities.byId(created?.id ?? "")
+    if (!row) throw new Error("Activity row missing")
+    const provider = DexieYProvider.load(row.content)
+    await provider.whenLoaded
+    const body = yXmlFragmentToProseMirrorRootNode(
+      row.content.getXmlFragment(DOCUMENT_FRAGMENT),
+      schema
+    )
+    DexieYProvider.release(row.content)
+    expect(() => body.check()).not.toThrow()
+    const blocks: string[] = []
+    body.forEach((node) => blocks.push(`${node.type.name}:${node.textContent}`))
+    expect(blocks).toEqual([
+      "title:Book a sparring session",
+      "paragraph:Light technical sparring only.",
+      "paragraph:Pack gloves",
+    ])
+  })
+})
+
 describe("repairing an activity body", () => {
   it("fills in a body that was never seeded from the stored title", async () => {
     const { activities, home } = await setup()

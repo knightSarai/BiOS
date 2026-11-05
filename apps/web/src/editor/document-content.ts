@@ -44,12 +44,39 @@ const seedDocumentWithTitle = (ydoc: Y.Doc, title: string) => {
   if (title) titleElement.insert(0, [new Y.XmlText(title)])
 }
 
+// Notes replace the seed's empty first paragraph, one paragraph per line.
+const seedDocumentNotes = (ydoc: Y.Doc, notes: string) => {
+  const lines = notes.trim().split("\n")
+  if (lines.join("") === "") return
+  const fragment = ydoc.getXmlFragment(DOCUMENT_FRAGMENT)
+  const first = fragment.get(1)
+  ydoc.transact(() => {
+    if (
+      fragment.length === 2 &&
+      first instanceof Y.XmlElement &&
+      first.nodeName === "paragraph" &&
+      first.length === 0
+    ) {
+      fragment.delete(1, 1)
+    }
+    fragment.insert(
+      1,
+      lines.map((line) => {
+        const paragraph = new Y.XmlElement("paragraph")
+        if (line) paragraph.insert(0, [new Y.XmlText(line)])
+        return paragraph
+      })
+    )
+  })
+}
+
 const titleOf = (doc: Node) => doc.firstChild?.textContent.trim() ?? ""
 
 export {
   DOCUMENT_FRAGMENT,
   emptyDocument,
   seedDocument,
+  seedDocumentNotes,
   seedDocumentWithTitle,
   titleOf,
 }

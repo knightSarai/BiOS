@@ -1,8 +1,11 @@
 import { useSuspenseQuery } from "@tanstack/react-query"
 import { createFileRoute, Link } from "@tanstack/react-router"
-import { CircleDashed } from "lucide-react"
+import { useSetAtom } from "jotai"
+import { CircleDashed, Plus } from "lucide-react"
 import { z } from "zod"
 import { areaDotClassNames } from "@/activities/areas"
+import { openNewActivityAtom } from "@/activities/new-activity"
+import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/common/EmptyState"
 import { activityListQuery, areasQuery } from "@/local-db/activity-queries"
 import { cn } from "@/lib/utils"
@@ -37,6 +40,7 @@ function ActivitiesPage() {
     activityListQuery(workspace.id, areaId)
   )
   const currentArea = areas.find((area) => area.id === areaId)
+  const openNewActivity = useSetAtom(openNewActivityAtom)
 
   return (
     <Page.Layout>
@@ -46,6 +50,16 @@ function ActivitiesPage() {
             {currentArea ? currentArea.name : "Activities"}
           </Page.Title>
         </Page.HeaderContent>
+        <Page.HeaderActions>
+          <Button
+            onClick={() =>
+              openNewActivity({ areaId: areaId ?? null, goalId: null })
+            }
+          >
+            <Plus data-icon="inline-start" />
+            New activity
+          </Button>
+        </Page.HeaderActions>
       </Page.Header>
       <Page.Body>
         <Page.ScrollArea>

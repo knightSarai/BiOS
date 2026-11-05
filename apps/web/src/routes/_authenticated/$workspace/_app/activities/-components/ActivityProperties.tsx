@@ -1,22 +1,23 @@
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
-import { Check, ChevronDown, FileText, Target } from "lucide-react"
-import { formatActivityTimestamp, now, parseUtc } from "@knight-os/server/core"
+import { CalendarDays, ChevronDown, FileText, Target } from "lucide-react"
+import {
+  formatActivityTimestamp,
+  formatDayLabel,
+  now,
+  parseUtc,
+} from "@knight-os/server/core"
 import { activityKey, areaDotClassNames } from "@/activities/areas"
+import { AreaMenu } from "@/activities/components/AreaMenu"
+import { DueDateMenu } from "@/activities/components/DueDateMenu"
+import { GoalMenu } from "@/activities/components/GoalMenu"
 import { StatusIcon } from "@/activities/components/StatusIcon"
 import { StatusMenu } from "@/activities/components/StatusMenu"
 import { statusLabels } from "@/activities/status"
 import { GoalIcon } from "@/goals/components/GoalIcon"
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import {
   useMoveActivityToArea,
+  useSetActivityDueDate,
   useSetActivityGoal,
   useSetActivityStatus,
 } from "@/local-db/activity-mutations"
@@ -159,56 +160,28 @@ function AreaControl({ activity, workspace, className }: PropertyControlProps) {
   const label = area?.name ?? "No area"
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <button
-            type="button"
-            aria-label={`Area: ${label}`}
-            className={className}
+    <AreaMenu
+      areas={areas}
+      value={activity.areaId}
+      heading="Move to area"
+      onChange={(areaId) => moveToArea.mutate({ id: activity.id, areaId })}
+      trigger={
+        <button
+          type="button"
+          aria-label={`Area: ${label}`}
+          className={className}
+        >
+          <span
+            className={cn(
+              "size-2 shrink-0 rounded-full",
+              area ? areaDotClassNames[area.color] : "bg-muted-foreground"
+            )}
           />
-        }
-      >
-        <span
-          className={cn(
-            "size-2 shrink-0 rounded-full",
-            area ? areaDotClassNames[area.color] : "bg-muted-foreground"
-          )}
-        />
-        <span className="flex-1 truncate">{label}</span>
-        <ChevronDown className="size-3.5 text-muted-foreground" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-52">
-        <DropdownMenuGroup>
-          <DropdownMenuLabel>Move to area</DropdownMenuLabel>
-          {areas.map((option) => (
-            <DropdownMenuItem
-              key={option.id}
-              className="min-h-8 max-md:min-h-11"
-              onClick={() => {
-                if (option.id !== activity.areaId) {
-                  moveToArea.mutate({ id: activity.id, areaId: option.id })
-                }
-              }}
-            >
-              <span
-                className={cn(
-                  "size-2 rounded-full",
-                  areaDotClassNames[option.color]
-                )}
-              />
-              <span className="flex-1">{option.name}</span>
-              <span className="text-xs text-muted-foreground">
-                {option.key}
-              </span>
-              {option.id === activity.areaId ? (
-                <Check className="text-accent-text" />
-              ) : null}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          <span className="flex-1 truncate">{label}</span>
+          <ChevronDown className="size-3.5 text-muted-foreground" />
+        </button>
+      }
+    />
   )
 }
 
@@ -217,72 +190,67 @@ function GoalControl({ activity, workspace, className }: PropertyControlProps) {
   const setGoal = useSetActivityGoal(workspace.id)
   const goal = goals?.find((candidate) => candidate.id === activity.goalId)
   const label = goal ? goal.title || "Untitled goal" : "No goal"
-  const choices = (goals ?? []).filter(
-    (candidate) =>
-      candidate.status === "in-progress" || candidate.id === activity.goalId
-  )
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <button
-            type="button"
-            aria-label={`Goal: ${label}`}
-            className={className}
-          />
-        }
-      >
-        {goal ? (
-          <GoalIcon icon={goal.icon} className="size-3.5" />
-        ) : (
-          <Target className="size-3.5 shrink-0 text-muted-foreground" />
-        )}
-        <span
-          className={cn("flex-1 truncate", !goal && "text-muted-foreground")}
+    <GoalMenu
+      goals={goals ?? []}
+      value={activity.goalId}
+      onChange={(goalId) => setGoal.mutate({ id: activity.id, goalId })}
+      trigger={
+        <button
+          type="button"
+          aria-label={`Goal: ${label}`}
+          className={className}
         >
-          {label}
-        </span>
-        <ChevronDown className="size-3.5 text-muted-foreground" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-60">
-        <DropdownMenuGroup>
-          <DropdownMenuLabel>Goal</DropdownMenuLabel>
-          {choices.map((option) => (
-            <DropdownMenuItem
-              key={option.id}
-              className="min-h-8 max-md:min-h-11"
-              onClick={() =>
-                setGoal.mutate({ id: activity.id, goalId: option.id })
-              }
-            >
-              <GoalIcon icon={option.icon} className="size-3.5" />
-              <span className="flex-1 truncate">
-                {option.title || "Untitled goal"}
-              </span>
-              {option.id === activity.goalId ? (
-                <Check className="text-accent-text" />
-              ) : null}
-            </DropdownMenuItem>
-          ))}
-          {choices.length === 0 ? (
-            <p className="px-2 py-1.5 text-xs text-muted-foreground">
-              No goals in progress.
-            </p>
-          ) : null}
-          {activity.goalId ? (
-            <DropdownMenuItem
-              className="min-h-8 max-md:min-h-11"
-              onClick={() => setGoal.mutate({ id: activity.id, goalId: null })}
-            >
-              <span className="flex-1 text-muted-foreground">
-                Remove from goal
-              </span>
-            </DropdownMenuItem>
-          ) : null}
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          {goal ? (
+            <GoalIcon icon={goal.icon} className="size-3.5" />
+          ) : (
+            <Target className="size-3.5 shrink-0 text-muted-foreground" />
+          )}
+          <span
+            className={cn("flex-1 truncate", !goal && "text-muted-foreground")}
+          >
+            {label}
+          </span>
+          <ChevronDown className="size-3.5 text-muted-foreground" />
+        </button>
+      }
+    />
+  )
+}
+
+function DueDateControl({
+  activity,
+  workspace,
+  className,
+}: PropertyControlProps) {
+  const setDueDate = useSetActivityDueDate(workspace.id)
+  const label = activity.dueDate ? formatDayLabel(activity.dueDate) : "No date"
+
+  return (
+    <DueDateMenu
+      value={activity.dueDate}
+      timezone={workspace.timezone}
+      onChange={(dueDate) => setDueDate.mutate({ id: activity.id, dueDate })}
+      trigger={
+        <button
+          type="button"
+          aria-label={`Due date: ${label}`}
+          className={className}
+        >
+          <CalendarDays className="size-3.5 shrink-0 text-muted-foreground" />
+          <span
+            className={cn(
+              "flex-1 truncate",
+              !activity.dueDate && "text-muted-foreground"
+            )}
+          >
+            {label}
+          </span>
+          <ChevronDown className="size-3.5 text-muted-foreground" />
+        </button>
+      }
+    />
   )
 }
 
@@ -329,6 +297,13 @@ function ActivityProperties({ activity, workspace }: ActivityPropertiesProps) {
           className={propertyButtonClassName}
         />
       </Property>
+      <Property label="Due">
+        <DueDateControl
+          activity={activity}
+          workspace={workspace}
+          className={propertyButtonClassName}
+        />
+      </Property>
       {activity.origin ? (
         <Property label="Written in">
           <OriginLink
@@ -364,6 +339,11 @@ function ActivityPropertyChips({
         className={chipClassName}
       />
       <GoalControl
+        activity={activity}
+        workspace={workspace}
+        className={chipClassName}
+      />
+      <DueDateControl
         activity={activity}
         workspace={workspace}
         className={chipClassName}

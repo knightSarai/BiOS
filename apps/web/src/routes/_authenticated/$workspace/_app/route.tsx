@@ -1,5 +1,6 @@
 import { createFileRoute, Outlet } from "@tanstack/react-router"
 import { AppShell } from "@layout/core/AppShell"
+import { NewActivityDialog } from "@/activities/components/NewActivityDialog"
 import { resolveNav } from "@layout/resolve-nav"
 import { NotebookDialogs } from "@/notebook/components/NotebookDialogs"
 import { NotebookNav } from "@/notebook/components/NotebookNav"
@@ -29,6 +30,14 @@ function RouteComponent() {
     >
       <Outlet />
       <NewAreaDialog workspaceId={workspace.id} />
+      <NewActivityDialog
+        workspace={{
+          id: workspace.id,
+          name: workspace.name,
+          slug: workspace.slug,
+          timezone: workspace.settings.timezone,
+        }}
+      />
       <NotebookDialogs workspace={notebookWorkspace} />
     </AppShell>
   )

@@ -3,6 +3,7 @@ import * as Y from "yjs"
 import {
   DOCUMENT_FRAGMENT,
   seedDocument,
+  seedDocumentNotes,
   seedDocumentWithTitle,
 } from "@/editor/document-content"
 import type { LocalDb } from "./db"
@@ -32,12 +33,14 @@ const seedContentWithTitle = async (
   db: LocalDb,
   tableName: ContentTableName,
   content: Y.Doc,
-  title: string
+  title: string,
+  notes = ""
 ) => {
   const provider = DexieYProvider.load(content)
   try {
     await provider.whenLoaded
     seedDocumentWithTitle(content, title)
+    seedDocumentNotes(content, notes)
     await contentWritesSettled(db, tableName)
   } finally {
     DexieYProvider.release(content)

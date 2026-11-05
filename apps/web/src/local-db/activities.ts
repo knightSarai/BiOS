@@ -31,6 +31,7 @@ type NewActivity = {
   fields?: Record<string, unknown>
   dueDate?: string | null
   title: string
+  notes?: string
   status: ActivityStatus
   origin: ActivityOrigin | null
 }
@@ -110,9 +111,11 @@ class ActivitiesRepository {
     return created
   }
 
-  async seedContents(activities: { id: string; title: string }[]) {
+  async seedContents(
+    activities: { id: string; title: string; notes?: string }[]
+  ) {
     for (const activity of activities) {
-      await this.seedContent(activity.id, activity.title)
+      await this.seedContent(activity.id, activity.title, activity.notes)
     }
   }
 
@@ -121,10 +124,10 @@ class ActivitiesRepository {
     if (row) await this.seedContent(row.id, row.title)
   }
 
-  private async seedContent(id: string, title: string) {
+  private async seedContent(id: string, title: string, notes = "") {
     const row = await this.byId(id)
     if (!row) return
-    await seedContentWithTitle(this.db, "activities", row.content, title)
+    await seedContentWithTitle(this.db, "activities", row.content, title, notes)
   }
 
   private contentUpdatesTable() {

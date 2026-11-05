@@ -12,7 +12,6 @@ type EditorSnapshot = {
 const createEditorAtoms = () => ({
   snapshot: atom<EditorSnapshot | null>(null),
   linkDraft: atom<string | null>(null),
-  blockMenuPos: atom<number | null>(null),
   menuOpen: atom(false),
   drawingEditor: atom<DrawingEditor | null>(null),
   drawingOpen: atom(false),

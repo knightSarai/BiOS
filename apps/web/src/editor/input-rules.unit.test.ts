@@ -47,11 +47,11 @@ describe("markdown shortcuts", () => {
     expect(item.attrs.checked).toBe(true)
   })
 
-  it("turns ``` into a code block", () => {
+  it("leaves a plain ``` fence as text", () => {
     const view = emptyBody()
     typeText(view, "``` const x = 1")
-    expect(blockNames(view.state.doc)).toEqual(["title", "code_block"])
-    expect(view.state.doc.child(1).textContent).toBe("const x = 1")
+    expect(blockNames(view.state.doc)).toEqual(["title", "paragraph"])
+    expect(view.state.doc.child(1).textContent).toBe("``` const x = 1")
   })
 
   it("turns ```mermaid into a diagram", () => {
@@ -59,13 +59,6 @@ describe("markdown shortcuts", () => {
     typeText(view, "```mermaid flowchart LR")
     expect(blockNames(view.state.doc)).toEqual(["title", "mermaid"])
     expect(view.state.doc.child(1).textContent).toBe("flowchart LR")
-  })
-
-  it("keeps other fenced languages as code blocks", () => {
-    const view = emptyBody()
-    typeText(view, "```mermaidish x")
-    expect(blockNames(view.state.doc)).toEqual(["title", "code_block"])
-    expect(view.state.doc.child(1).attrs.language).toBe("mermaidish")
   })
 
   it("replaces --- with a divider and a fresh paragraph", () => {
@@ -101,9 +94,9 @@ describe("markdown shortcuts", () => {
     expect(view.state.doc.child(0).textContent).toBe("## **Not a heading**")
   })
 
-  it("does not format inside code blocks", () => {
+  it("does not format inside diagram source", () => {
     const view = emptyBody()
-    typeText(view, "``` **raw**")
+    typeText(view, "```mermaid **raw**")
     expect(view.state.doc.child(1).textContent).toBe("**raw**")
   })
 })

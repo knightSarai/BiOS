@@ -64,6 +64,15 @@ function DocumentDetails({
 
   return (
     <div className="flex flex-col gap-5 text-sm">
+      <p className="text-xs text-muted-foreground">
+        Edited{" "}
+        {formatActivityTimestamp(
+          data.document.updatedAt,
+          workspace.timezone,
+          current
+        )}
+      </p>
+
       {data.belongsTo ? (
         <section className="flex flex-col gap-1">
           <h2 className={headingClassName}>Belongs to</h2>
@@ -171,15 +180,6 @@ function DocumentDetails({
           )}
         </section>
       ) : null}
-
-      <p className="text-xs text-muted-foreground">
-        Edited{" "}
-        {formatActivityTimestamp(
-          data.document.updatedAt,
-          workspace.timezone,
-          current
-        )}
-      </p>
     </div>
   )
 }

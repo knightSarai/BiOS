@@ -10,9 +10,7 @@ import type { ActivityBridge } from "../activity-bridge"
 import type { MentionBridge } from "../mention-bridge"
 import type { EditorContent } from "../mention-index"
 import { activeLinkHref, isInTitle } from "../commands"
-import { readUi, setHoverPos } from "../editor-ui"
 import { mountEditor } from "../mount-editor"
-import { BlockHandle } from "./BlockHandle"
 import { createEditorAtoms } from "./editor-atoms"
 import { MentionMenu } from "./MentionMenu"
 import { createMentionHoverAtom, MentionPreview } from "./MentionPreview"
@@ -114,20 +112,10 @@ function DocumentEditor({
     store.get(atoms.snapshot)?.view.focus()
   }
 
-  const clearHover = () => {
-    const snapshot = store.get(atoms.snapshot)
-    if (!snapshot || store.get(atoms.blockMenuPos) !== null) return
-    if (readUi(snapshot.state).hoverPos !== null)
-      setHoverPos(snapshot.view, null)
-  }
-
   return (
     <div
       className="relative"
-      onMouseLeave={() => {
-        clearHover()
-        store.set(mentionHoverAtom, null)
-      }}
+      onMouseLeave={() => store.set(mentionHoverAtom, null)}
       onMouseOver={(event) => {
         const chip =
           event.target instanceof Element
@@ -169,10 +157,7 @@ function DocumentEditor({
           activities={activities}
         />
       ) : (
-        <>
-          <BlockHandle atoms={atoms} blockLink={blockLink} />
-          <SelectionToolbar atoms={atoms} activities={activities} />
-        </>
+        <SelectionToolbar atoms={atoms} activities={activities} />
       )}
     </div>
   )

@@ -1,31 +1,43 @@
 import { describe, expect, it } from "vitest"
-import { blockCatalog, filterBlockCatalog } from "./block-catalog"
+import { filterSlashBlocks, slashBlocks } from "./block-catalog"
 import { shortcutKeys } from "./components/shortcut-keys"
 
-describe("filterBlockCatalog", () => {
-  it("returns every block for an empty query", () => {
-    expect(filterBlockCatalog("  ")).toHaveLength(blockCatalog.length)
+describe("filterSlashBlocks", () => {
+  it("returns every slash block for an empty query", () => {
+    expect(filterSlashBlocks("  ")).toHaveLength(slashBlocks.length)
+  })
+
+  it("leaves out plain text and code blocks", () => {
+    const kinds = filterSlashBlocks("").map((item) => item.kind)
+    expect(kinds).not.toContain("paragraph")
+    expect(filterSlashBlocks("text")).toEqual([])
+    expect(filterSlashBlocks("code")).toEqual([])
+  })
+
+  it("lists diagram and drawing last", () => {
+    const kinds = filterSlashBlocks("").map((item) => item.kind)
+    expect(kinds.slice(-2)).toEqual(["mermaid", "drawing"])
   })
 
   it("ranks label prefixes before aliases", () => {
-    expect(filterBlockCatalog("h2")[0]?.kind).toBe("heading2")
-    expect(filterBlockCatalog("co")[0]?.kind).toBe("code_block")
+    expect(filterSlashBlocks("h2")[0]?.kind).toBe("heading2")
+    expect(filterSlashBlocks("co")[0]?.kind).toBe("collapsible")
   })
 
   it("finds blocks by their aliases", () => {
-    expect(filterBlockCatalog("todo").map((item) => item.kind)).toEqual([
+    expect(filterSlashBlocks("todo").map((item) => item.kind)).toEqual([
       "task_list",
     ])
-    expect(filterBlockCatalog("toggle").map((item) => item.kind)).toEqual([
+    expect(filterSlashBlocks("toggle").map((item) => item.kind)).toEqual([
       "collapsible",
     ])
-    expect(filterBlockCatalog("flowchart").map((item) => item.kind)).toEqual([
+    expect(filterSlashBlocks("flowchart").map((item) => item.kind)).toEqual([
       "mermaid",
     ])
   })
 
   it("returns nothing for an unknown query", () => {
-    expect(filterBlockCatalog("issue")).toEqual([])
+    expect(filterSlashBlocks("issue")).toEqual([])
   })
 })
 

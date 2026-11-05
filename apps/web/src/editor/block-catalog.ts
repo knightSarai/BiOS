@@ -43,10 +43,16 @@ const blockCatalog = [
     keys: "Mod-Shift-.",
   },
   {
-    kind: "code_block",
-    label: "Code block",
-    aliases: ["code", "snippet", "pre"],
-    keys: "Mod-Shift-\\",
+    kind: "collapsible",
+    label: "Collapsible section",
+    aliases: ["toggle", "details", "fold"],
+    keys: "Mod-Shift-6",
+  },
+  {
+    kind: "horizontal_rule",
+    label: "Divider",
+    aliases: ["hr", "separator", "line", "rule"],
+    keys: "Mod-Shift--",
   },
   {
     kind: "mermaid",
@@ -55,27 +61,17 @@ const blockCatalog = [
     keys: null,
   },
   {
-    kind: "collapsible",
-    label: "Collapsible section",
-    aliases: ["toggle", "details", "fold"],
-    keys: "Mod-Shift-6",
-  },
-  {
     kind: "drawing",
     label: "Drawing",
     aliases: ["sketch", "whiteboard", "draw", "canvas", "excalidraw"],
     keys: null,
   },
-  {
-    kind: "horizontal_rule",
-    label: "Divider",
-    aliases: ["hr", "separator", "line", "rule"],
-    keys: "Mod-Shift--",
-  },
 ] as const
 
 type BlockCatalogItem = (typeof blockCatalog)[number]
 type BlockKind = BlockCatalogItem["kind"]
+
+const slashBlocks = blockCatalog.filter((item) => item.kind !== "paragraph")
 
 const matchRank = (item: BlockCatalogItem, query: string) => {
   const label = item.label.toLowerCase()
@@ -91,15 +87,15 @@ const matchRank = (item: BlockCatalogItem, query: string) => {
   return null
 }
 
-const filterBlockCatalog = (rawQuery: string): BlockCatalogItem[] => {
+const filterSlashBlocks = (rawQuery: string): BlockCatalogItem[] => {
   const query = rawQuery.trim().toLowerCase()
-  if (!query) return [...blockCatalog]
-  return blockCatalog
+  if (!query) return slashBlocks
+  return slashBlocks
     .map((item, order) => ({ item, order, rank: matchRank(item, query) }))
     .filter((entry) => entry.rank !== null)
     .sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0) || a.order - b.order)
     .map((entry) => entry.item)
 }
 
-export { blockCatalog, filterBlockCatalog }
+export { blockCatalog, filterSlashBlocks, slashBlocks }
 export type { BlockCatalogItem, BlockKind }

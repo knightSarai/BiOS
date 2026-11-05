@@ -11,7 +11,6 @@ import {
 } from "../editor-ui"
 import { blockIcons } from "./block-icons"
 import type { EditorAtoms } from "./editor-atoms"
-import { shortcutKeys } from "./shortcut-keys"
 
 const caretAnchor = (view: EditorView, pos: number) => ({
   getBoundingClientRect: () => {
@@ -89,11 +88,6 @@ function SlashMenu({ atoms, menuId }: SlashMenuProps) {
                     >
                       <Icon className="size-3.5 shrink-0 text-muted-foreground" />
                       <span className="flex-1">{item.label}</span>
-                      {item.keys ? (
-                        <span className="text-[0.625rem] tracking-widest text-muted-foreground max-md:hidden">
-                          {shortcutKeys(item.keys).join(" ")}
-                        </span>
-                      ) : null}
                     </div>
                   )
                 })}

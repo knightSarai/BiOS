@@ -7,7 +7,7 @@ import {
   type EditorState,
 } from "prosemirror-state"
 import { Decoration, DecorationSet, type EditorView } from "prosemirror-view"
-import { filterBlockCatalog, type BlockKind } from "./block-catalog"
+import { filterSlashBlocks, type BlockKind } from "./block-catalog"
 import {
   Chain,
   insertParagraphAfter,
@@ -25,7 +25,6 @@ type SlashState = {
 type EditorUiState = {
   focused: boolean
   pointerDown: boolean
-  hoverPos: number | null
   flashPos: number | null
   slash: SlashState | null
 }
@@ -33,7 +32,6 @@ type EditorUiState = {
 type EditorUiAction =
   | { type: "focus"; focused: boolean }
   | { type: "pointer"; down: boolean }
-  | { type: "hover"; pos: number | null }
   | { type: "flash"; pos: number | null }
   | { type: "slash-open"; from: number }
   | { type: "slash-close" }
@@ -44,7 +42,6 @@ const editorUiKey = new PluginKey<EditorUiState>("editorUi")
 const initialUiState: EditorUiState = {
   focused: false,
   pointerDown: false,
-  hoverPos: null,
   flashPos: null,
   slash: null,
 }
@@ -52,7 +49,7 @@ const initialUiState: EditorUiState = {
 const readUi = (state: EditorState) =>
   editorUiKey.getState(state) ?? initialUiState
 
-const slashItems = (slash: SlashState) => filterBlockCatalog(slash.query)
+const slashItems = (slash: SlashState) => filterSlashBlocks(slash.query)
 
 const nextSlashState = (slash: SlashState, state: EditorState) => {
   const { selection } = state
@@ -66,7 +63,7 @@ const nextSlashState = (slash: SlashState, state: EditorState) => {
   if (query.startsWith(" ") || query.includes("  ") || query.length > 32) {
     return null
   }
-  const count = filterBlockCatalog(query).length
+  const count = filterSlashBlocks(query).length
   const index = query === slash.query ? slash.index : 0
   return {
     from: slash.from,
@@ -81,23 +78,6 @@ const canOpenSlash = (state: EditorState, from: number) => {
   if (parent.type === nodes.title || parent.type.spec.code) return false
   const before = parent.textBetween(0, $from.parentOffset, undefined, " ")
   return before === "" || /\s$/.test(before)
-}
-
-const blockPosAt = (state: EditorState, pos: number, inside: number) => {
-  const target = inside >= 0 ? inside : pos
-  const $pos = state.doc.resolve(target)
-  if ($pos.depth === 0) {
-    const after = $pos.nodeAfter
-    return after && after.type !== nodes.title ? target : null
-  }
-  for (let depth = $pos.depth; depth > 0; depth--) {
-    const type = $pos.node(depth).type
-    if (type === nodes.list_item || type === nodes.task_item) {
-      return $pos.before(depth)
-    }
-    if (depth === 1) return type === nodes.title ? null : $pos.before(1)
-  }
-  return null
 }
 
 const placeholderFor = (node: Node, isOnlyBlock: boolean) => {
@@ -157,10 +137,6 @@ const editorUiPlugin = new Plugin<EditorUiState>({
       const action = tr.getMeta(editorUiKey) as EditorUiAction | undefined
       let next: EditorUiState = value
 
-      if (tr.docChanged && value.hoverPos !== null) {
-        const mapped = tr.mapping.mapResult(value.hoverPos, 1)
-        next = { ...next, hoverPos: mapped.deleted ? null : mapped.pos }
-      }
       if (tr.docChanged && next.flashPos !== null) {
         const mapped = tr.mapping.mapResult(next.flashPos, 1)
         next = { ...next, flashPos: mapped.deleted ? null : mapped.pos }
@@ -182,8 +158,6 @@ const editorUiPlugin = new Plugin<EditorUiState>({
           }
         case "pointer":
           return { ...next, pointerDown: action.down }
-        case "hover":
-          return { ...next, hoverPos: action.pos }
         case "flash":
           return { ...next, flashPos: action.pos }
         case "slash-open":
@@ -305,25 +279,12 @@ const editorUiPlugin = new Plugin<EditorUiState>({
         )
         return false
       },
-      mousemove(view, event) {
-        const hit = view.posAtCoords({
-          left: event.clientX,
-          top: event.clientY,
-        })
-        const pos = hit ? blockPosAt(view.state, hit.pos, hit.inside) : null
-        if (pos !== readUi(view.state).hoverPos) setHoverPos(view, pos)
-        return false
-      },
     },
   },
 })
 
 const setFlashPos = (view: EditorView, pos: number | null) => {
   view.dispatch(view.state.tr.setMeta(editorUiKey, { type: "flash", pos }))
-}
-
-const setHoverPos = (view: EditorView, pos: number | null) => {
-  view.dispatch(view.state.tr.setMeta(editorUiKey, { type: "hover", pos }))
 }
 
 const applySlashItem =
@@ -389,10 +350,8 @@ export {
   editorUiKey,
   editorUiPlugin,
   openInsertMenu,
-  openSlashMenu,
   readUi,
   setFlashPos,
-  setHoverPos,
   setSlashIndex,
   slashItems,
 }

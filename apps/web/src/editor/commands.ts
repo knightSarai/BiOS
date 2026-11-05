@@ -166,9 +166,6 @@ const turnInto =
           setBlockType(nodes.heading, { level: Number(kind.slice(-1)) })
         )
         break
-      case "code_block":
-        chain.run(setBlockType(nodes.code_block))
-        break
       case "mermaid":
         chain.run(setBlockType(nodes.mermaid))
         break
@@ -204,7 +201,7 @@ const activeBlockKind = (state: EditorState): BlockKind | null => {
   if (parent.type === nodes.heading) {
     return `heading${parent.attrs.level as 1 | 2 | 3}`
   }
-  if (parent.type === nodes.code_block) return "code_block"
+  if (parent.type === nodes.code_block) return null
   if (parent.type === nodes.mermaid) return "mermaid"
   return "paragraph"
 }
@@ -334,29 +331,6 @@ const insertParagraphAfter =
     return true
   }
 
-const selectBlockStart =
-  (pos: number): Command =>
-  (state, dispatch) => {
-    const node = state.doc.nodeAt(pos)
-    if (!node) return false
-    if (dispatch) {
-      const selection = node.isLeaf
-        ? NodeSelection.create(state.doc, pos)
-        : Selection.findFrom(state.doc.resolve(pos + 1), 1, true)
-      if (!selection) return false
-      dispatch(state.tr.setSelection(selection))
-    }
-    return true
-  }
-
-const blockKindAt = (state: EditorState, pos: number) => {
-  let kind: BlockKind | null = null
-  selectBlockStart(pos)(state, (tr) => {
-    kind = activeBlockKind(state.apply(tr))
-  })
-  return kind as BlockKind | null
-}
-
 const toggleTaskAt =
   (pos: number): Command =>
   (state, dispatch) => {
@@ -460,7 +434,6 @@ export {
   Chain,
   activeBlockKind,
   activeLinkHref,
-  blockKindAt,
   deleteBlockAt,
   duplicateBlockAt,
   indentListItem,
@@ -473,7 +446,6 @@ export {
   moveBlockAt,
   movableBlockPos,
   outdentListItem,
-  selectBlockStart,
   setLink,
   toggleCollapsibleAt,
   toggleFormat,

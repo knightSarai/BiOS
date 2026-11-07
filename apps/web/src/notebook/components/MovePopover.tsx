@@ -9,7 +9,6 @@ import {
   canMoveFolder,
   foldersInTreeOrder,
   indexFolders,
-  isJournalFolder,
   ownerOfFolder,
   pathTo,
 } from "../tree"
@@ -49,7 +48,6 @@ function MovePopover({ workspace }: { workspace: NotebookWorkspace }) {
       : data?.documents.find((row) => row.id === moving.id)?.folderId
     : undefined
   const allowed = (folder: FolderRow) =>
-    !isJournalFolder(folder.role) &&
     folder.id !== currentParentId &&
     (moving?.kind !== "folder" || canMoveFolder(moving.id, folder.id, byId))
   const destinations: Destination[] = foldersInTreeOrder(data?.folders ?? [])

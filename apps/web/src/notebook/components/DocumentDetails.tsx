@@ -151,7 +151,7 @@ function DocumentDetails({
                     {source.document.title || "Untitled"}
                   </span>
                   <span className="truncate text-xs text-muted-foreground">
-                    {source.document.journal ? "Journal page" : "Document"}
+                    Document
                   </span>
                 </span>
               </Link>

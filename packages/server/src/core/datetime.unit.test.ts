@@ -9,7 +9,9 @@ import {
   formatDate,
   formatDayLabel,
   formatMonthName,
+  formatShortMonthName,
   formatWeekLabel,
+  formatYear,
   isoWeekDays,
   isoWeekKey,
   isoWeekOf,
@@ -488,5 +490,7 @@ describe("ISO weeks", () => {
   it("labels days and months", () => {
     expect(formatDayLabel("2026-11-01")).toBe("Sun 1 Nov")
     expect(formatMonthName("2026-11-01")).toBe("November")
+    expect(formatShortMonthName("2026-11-01")).toBe("Nov")
+    expect(formatYear("2026-11-01")).toBe("2026")
   })
 })

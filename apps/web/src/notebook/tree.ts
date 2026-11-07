@@ -1,66 +1,33 @@
-import type { DocumentRow, FolderRole, FolderRow } from "@/local-db/db"
+import type { DocumentRow, FolderRow } from "@/local-db/db"
 import { ROOT_FOLDER_ID } from "@/local-db/db"
 import type { OwnerKey } from "./owners"
 
 type TreeFolder = Pick<
   FolderRow,
-  "id" | "parentId" | "name" | "sortKey" | "role" | "period" | "ownerKey"
+  "id" | "parentId" | "name" | "sortKey" | "role" | "ownerKey"
 >
 
 type TreeDocument = Pick<
   DocumentRow,
-  "id" | "folderId" | "title" | "sortKey" | "icon" | "journal"
+  "id" | "folderId" | "title" | "sortKey" | "icon"
 >
 
 type TreeNode<F extends TreeFolder, D extends TreeDocument> =
   | { kind: "folder"; folder: F; children: TreeNode<F, D>[] }
   | { kind: "document"; document: D }
 
-const JOURNAL_ROLES: FolderRole[] = [
-  "journal",
-  "journal-year",
-  "journal-weeks",
-  "journal-month",
-]
-
-const isJournalFolder = (role: FolderRole) => JOURNAL_ROLES.includes(role)
-
-// Journal folders sort newest first, with the year page and Weeks above the months.
-const journalRank = <F extends TreeFolder, D extends TreeDocument>(
-  node: TreeNode<F, D>
+const compareNodes = <F extends TreeFolder, D extends TreeDocument>(
+  a: TreeNode<F, D>,
+  b: TreeNode<F, D>
 ) => {
-  if (node.kind === "document") {
-    return node.document.journal?.period === "year" ? 0 : 3
-  }
-  return node.folder.role === "journal-weeks" ? 1 : 2
+  if (a.kind !== b.kind) return a.kind === "folder" ? -1 : 1
+  const keyA = a.kind === "folder" ? a.folder.sortKey : a.document.sortKey
+  const keyB = b.kind === "folder" ? b.folder.sortKey : b.document.sortKey
+  if (keyA !== keyB) return keyA < keyB ? -1 : 1
+  const nameA = a.kind === "folder" ? a.folder.name : a.document.title
+  const nameB = b.kind === "folder" ? b.folder.name : b.document.title
+  return nameA.localeCompare(nameB)
 }
-
-const journalSortValue = <F extends TreeFolder, D extends TreeDocument>(
-  node: TreeNode<F, D>
-) =>
-  node.kind === "folder"
-    ? (node.folder.period ?? node.folder.name)
-    : (node.document.journal?.key ?? node.document.title)
-
-const compareNodes =
-  (parentRole: FolderRole | null) =>
-  <F extends TreeFolder, D extends TreeDocument>(
-    a: TreeNode<F, D>,
-    b: TreeNode<F, D>
-  ) => {
-    if (parentRole && isJournalFolder(parentRole)) {
-      const rank = journalRank(a) - journalRank(b)
-      if (rank !== 0) return rank
-      return journalSortValue(b).localeCompare(journalSortValue(a))
-    }
-    if (a.kind !== b.kind) return a.kind === "folder" ? -1 : 1
-    const keyA = a.kind === "folder" ? a.folder.sortKey : a.document.sortKey
-    const keyB = b.kind === "folder" ? b.folder.sortKey : b.document.sortKey
-    if (keyA !== keyB) return keyA < keyB ? -1 : 1
-    const nameA = a.kind === "folder" ? a.folder.name : a.document.title
-    const nameB = b.kind === "folder" ? b.folder.name : b.document.title
-    return nameA.localeCompare(nameB)
-  }
 
 const buildTree = <F extends TreeFolder, D extends TreeDocument>(
   folders: F[],
@@ -89,8 +56,7 @@ const buildTree = <F extends TreeFolder, D extends TreeDocument>(
     )
   }
   for (const [parentId, siblings] of childrenOf) {
-    const parentRole = nodes.get(parentId)?.folder.role ?? null
-    siblings.sort(compareNodes(parentRole))
+    siblings.sort(compareNodes)
     const parent = nodes.get(parentId)
     if (parent) parent.children = siblings
   }
@@ -181,7 +147,6 @@ export {
   canMoveFolder,
   foldersInTreeOrder,
   indexFolders,
-  isJournalFolder,
   isSameOrInside,
   ownerOfFolder,
   pathTo,

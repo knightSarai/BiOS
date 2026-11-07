@@ -2,11 +2,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query"
 import type { ContentMention, EditorContent } from "@/editor/mention-index"
 import type { Owner, OwnerKey } from "@/notebook/owners"
 import { indexFolders, pathTo } from "@/notebook/tree"
-import type { JournalPeriod } from "@/journal/periods"
 import {
   createDocumentFor,
   describeOwnerKey,
-  ensureJournalPage,
   moveDocument,
   moveFolder,
   undoDocumentMove,
@@ -186,13 +184,6 @@ const useSaveDocumentContent = (workspaceId: string, documentId: string) =>
     await replaceMentions(ctx, `document:${documentId}`, content.mentions)
   })
 
-const useOpenJournalPage = (workspaceId: string) =>
-  useLocalMutation(
-    workspaceId,
-    (ctx, page: { period: JournalPeriod; date: string }) =>
-      ensureJournalPage(ctx, page.period, page.date)
-  )
-
 export { ownerLabel }
 export {
   useAttachDocument,
@@ -205,7 +196,6 @@ export {
   useDuplicateDocument,
   useMoveDocument,
   useMoveFolder,
-  useOpenJournalPage,
   useRenameDocument,
   useRenameFolder,
   useRestoreDeleted,

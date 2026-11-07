@@ -7,7 +7,6 @@ import type { AreaColor } from "@/activities/areas"
 import type { FieldKind, FieldOption, FieldValues } from "@/activities/fields"
 import type { ActivityStatus } from "@/activities/status"
 import type { GoalStatus } from "@/goals/status"
-import type { JournalFolderRole, JournalRef } from "@/journal/periods"
 import type { OwnerKey } from "@/notebook/owners"
 import { keyBetween, keysAfter } from "@/notebook/sort-keys"
 import { DEFAULT_DOCUMENT_ICON } from "@/notebook/stored-icon"
@@ -23,15 +22,12 @@ type DocumentRow = {
   sortKey: string
   icon: string | null
   excerpt: string
-  journal: JournalRef | null
-  journalKey: string | null
   createdAt: UtcDatetime
   updatedAt: UtcDatetime
   content: Y.Doc
 }
 
-type FolderRole =
-  "plain" | "areas" | "goals" | "area-activities" | JournalFolderRole
+type FolderRole = "plain" | "areas" | "goals" | "area-activities"
 
 type FolderRow = {
   id: string
@@ -40,7 +36,6 @@ type FolderRow = {
   name: string
   sortKey: string
   role: FolderRole
-  period: string | null
   ownerKey: OwnerKey | null
   followsOwner: boolean
   createdAt: UtcDatetime
@@ -182,8 +177,6 @@ const createLocalDb = (name: string): LocalDb => {
         row.sortKey = keys.get(row.id) ?? keyBetween(null, null)
         row.icon = null
         row.excerpt = ""
-        row.journal = null
-        row.journalKey = null
       })
       await tx
         .table("activities")
@@ -243,6 +236,40 @@ const createLocalDb = (name: string): LocalDb => {
         .toCollection()
         .filter((row) => row.icon === null)
         .modify({ icon: DEFAULT_DOCUMENT_ICON })
+    })
+  // Journal folders and pages become ordinary notebook items, left where they are.
+  db.version(8)
+    .stores({
+      documents:
+        "id, workspaceId, [workspaceId+updatedAt], [workspaceId+folderId], content: Y.Doc",
+    })
+    .upgrade(async (tx) => {
+      const journalRoles = [
+        "journal",
+        "journal-year",
+        "journal-weeks",
+        "journal-month",
+      ]
+      await tx
+        .table<
+          Omit<FolderRow, "role"> & { role: string; period?: string | null },
+          string
+        >("folders")
+        .toCollection()
+        .modify((row) => {
+          if (journalRoles.includes(row.role)) row.role = "plain"
+          delete row.period
+        })
+      await tx
+        .table<
+          DocumentRow & { journal?: unknown; journalKey?: unknown },
+          string
+        >("documents")
+        .toCollection()
+        .modify((row) => {
+          delete row.journal
+          delete row.journalKey
+        })
     })
   return db
 }

@@ -30,6 +30,25 @@ const openContent = async (repo: DocumentsRepository, id: string) => {
 }
 
 describe("document content in IndexedDB", () => {
+  it("stores a found-or-created page with its title already in the content", async () => {
+    const db = createLocalDb(`content-test-${crypto.randomUUID()}`)
+    openDbs.push(db)
+    const repo = new DocumentsRepository(db, { workspaceId: "ws-1" })
+    const [a, b] = await Promise.all([
+      repo.findOrCreateInFolder("root", "2026-11-07"),
+      repo.findOrCreateInFolder("root", "2026-11-07"),
+    ])
+    expect(a).toBe(b)
+    const content = await openContent(repo, a)
+    const stored = yXmlFragmentToProseMirrorRootNode(
+      content.getXmlFragment(DOCUMENT_FRAGMENT),
+      schema
+    )
+    expect(() => stored.check()).not.toThrow()
+    expect(titleOf(stored)).toBe("2026-11-07")
+    DexieYProvider.release(content)
+  })
+
   it("keeps edits across closing and reopening a document", async () => {
     const db = createLocalDb(`content-test-${crypto.randomUUID()}`)
     openDbs.push(db)

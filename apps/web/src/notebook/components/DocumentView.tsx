@@ -3,7 +3,6 @@ import { useLocation, useRouter } from "@tanstack/react-router"
 import { useActivityBridge } from "@/activities/use-activity-bridge"
 import { NotFound } from "@/components/common/NotFound"
 import { DocumentEditor } from "@/editor/components/DocumentEditor"
-import { JournalStrip } from "@/journal/components/JournalStrip"
 import { useSyncDocumentTitle } from "@/local-db/document-mutations"
 import { documentQuery } from "@/local-db/document-queries"
 import { useSaveDocumentContent } from "@/local-db/notebook-mutations"
@@ -63,9 +62,6 @@ function DocumentView({ workspace, documentId }: DocumentViewProps) {
       <Page.ScrollArea>
         <div className="mx-auto flex w-full max-w-5xl gap-10 px-4 pt-8 pb-16 md:px-16 md:pt-14">
           <div className="group/page min-w-0 flex-1">
-            {document.journal ? (
-              <JournalStrip journal={document.journal} workspace={workspace} />
-            ) : null}
             <PageIconButton
               target={{ kind: "document", id: documentId }}
               icon={document.icon}

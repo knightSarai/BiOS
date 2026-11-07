@@ -129,7 +129,7 @@ const useNotebookActions = (workspace: NotebookWorkspace) => {
     } catch (error) {
       toast.error(
         error instanceof SystemFolderMoveError
-          ? "Areas, Goals, Activities and Journal folders stay where they are."
+          ? "Areas, Goals and Activities folders stay where they are."
           : "A folder can't go inside itself."
       )
     }

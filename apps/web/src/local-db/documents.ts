@@ -1,5 +1,5 @@
 import { now, parseUtc } from "@knight-os/server/core"
-import { journalKeyOf, type JournalRef } from "@/journal/periods"
+import { titledContentUpdate } from "@/editor/document-content"
 import { keyBetween } from "@/notebook/sort-keys"
 import { DEFAULT_DOCUMENT_ICON } from "@/notebook/stored-icon"
 import { ROOT_FOLDER_ID, type LocalDb } from "./db"
@@ -22,7 +22,6 @@ type DocumentsContext = {
 type NewDocument = {
   folderId?: string
   title?: string
-  journal?: JournalRef | null
 }
 
 type DocumentContent = {
@@ -68,14 +67,6 @@ class DocumentsRepository {
     return rows.flat()
   }
 
-  async byJournalKey(journalKey: string) {
-    const row = await this.db.documents
-      .where("[workspaceId+journalKey]")
-      .equals([this.ctx.workspaceId, journalKey])
-      .first()
-    return row ?? null
-  }
-
   async lastSortKey(folderId: string) {
     const rows = await this.inFolder(folderId)
     return rows.reduce<string | null>(
@@ -88,7 +79,6 @@ class DocumentsRepository {
     const folderId = document.folderId ?? ROOT_FOLDER_ID
     const timestamp = parseUtc(now())
     const id = crypto.randomUUID()
-    const journal = document.journal ?? null
     await this.db.documents.add({
       id,
       workspaceId: this.ctx.workspaceId,
@@ -97,8 +87,6 @@ class DocumentsRepository {
       sortKey: keyBetween(await this.lastSortKey(folderId), null),
       icon: DEFAULT_DOCUMENT_ICON,
       excerpt: "",
-      journal,
-      journalKey: journal ? journalKeyOf(journal) : null,
       createdAt: timestamp,
       updatedAt: timestamp,
     })
@@ -120,24 +108,19 @@ class DocumentsRepository {
     return id
   }
 
-  // One transaction for the lookup and the insert, so two tabs opening Today
-  // at the same moment end up on the same page.
-  async findOrCreateJournalPage(page: {
-    folderId: string
-    title: string
-    journal: JournalRef
-  }) {
-    const { id, created } = await this.db.transaction(
-      "rw",
-      this.db.documents,
-      async () => {
-        const existing = await this.byJournalKey(journalKeyOf(page.journal))
-        if (existing) return { id: existing.id, created: false }
-        return { id: await this.insert(page), created: true }
-      }
-    )
-    if (created) await this.seedTitle(id, page.title)
-    return id
+  // The lookup, the row and its titled content share one transaction, so a
+  // second tab opening Today lands on the same page and never sees it untitled.
+  async findOrCreateInFolder(folderId: string, title: string) {
+    const updates = contentUpdatesTable(this.db, "documents")
+    return this.db.transaction("rw", this.db.documents, updates, async () => {
+      const existing = (await this.inFolder(folderId)).find(
+        (row) => row.title === title
+      )
+      if (existing) return existing.id
+      const id = await this.insert({ folderId, title })
+      await updates.add({ k: id, u: titledContentUpdate(title), f: 1 })
+      return id
+    })
   }
 
   async syncTitle(id: string, title: string) {
@@ -191,8 +174,6 @@ class DocumentsRepository {
         sortKey: keyBetween(source.sortKey, siblings[0] ?? null),
         icon: source.icon,
         excerpt: source.excerpt,
-        journal: null,
-        journalKey: null,
         createdAt: timestamp,
         updatedAt: timestamp,
       })

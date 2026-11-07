@@ -24,8 +24,6 @@ const withoutContent = (row: DocumentRow): Omit<DocumentRow, "content"> => ({
   sortKey: row.sortKey,
   icon: row.icon,
   excerpt: row.excerpt,
-  journal: row.journal,
-  journalKey: row.journalKey,
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,
 })

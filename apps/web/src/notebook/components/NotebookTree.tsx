@@ -24,7 +24,6 @@ import {
   buildTree,
   canMoveFolder,
   indexFolders,
-  isJournalFolder,
   pathTo,
   type TreeNode,
 } from "../tree"
@@ -211,8 +210,6 @@ function NotebookTree({
       target.zone === "inside" && anchor.kind === "folder"
         ? anchor.folder.id
         : parentOfAnchor
-    const destination = byId.get(intoFolderId)
-    if (destination && isJournalFolder(destination.role)) return
     const sameKind = anchor.kind === source.kind
     const sortKey =
       target.zone !== "inside" && sameKind

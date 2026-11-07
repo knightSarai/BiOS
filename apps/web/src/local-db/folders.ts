@@ -17,13 +17,7 @@ type NewFolder = {
   parentId?: string
   name: string
   role?: FolderRole
-  period?: string | null
   ownerKey?: OwnerKey | null
-}
-
-type ChildLookup = {
-  role: FolderRole
-  period?: string | null
 }
 
 class FolderLoopError extends Error {}
@@ -68,29 +62,30 @@ class FoldersRepository {
     return row ?? null
   }
 
-  async findChild(parentId: string, lookup: ChildLookup) {
+  async findChild(parentId: string, role: FolderRole) {
     const children = await this.children(parentId)
-    return (
-      children.find(
-        (row) =>
-          row.role === lookup.role &&
-          (lookup.period === undefined || row.period === lookup.period)
-      ) ?? null
-    )
+    return children.find((row) => row.role === role) ?? null
   }
 
   // IndexedDB runs read-write transactions on the same store one at a time,
   // also across tabs, so two callers can't both miss and create the folder.
   findOrCreateChild(
     parentId: string,
-    spec: { role: FolderRole; name: string; period: string | null }
+    spec: { role: FolderRole; name: string }
   ) {
     return this.db.transaction("rw", this.db.folders, async () => {
-      const existing = await this.findChild(parentId, {
-        role: spec.role,
-        period: spec.period,
-      })
+      const existing = await this.findChild(parentId, spec.role)
       return existing ?? this.create({ parentId, ...spec })
+    })
+  }
+
+  findOrCreatePlainChild(parentId: string, name: string) {
+    return this.db.transaction("rw", this.db.folders, async () => {
+      const children = await this.children(parentId)
+      const existing = children.find(
+        (row) => row.role === "plain" && row.name === name
+      )
+      return existing ?? this.create({ parentId, name })
     })
   }
 
@@ -122,7 +117,6 @@ class FoldersRepository {
       name: folder.name.trim() || "Untitled folder",
       sortKey: keyBetween(await this.lastSortKey(parentId), null),
       role: folder.role ?? "plain",
-      period: folder.period ?? null,
       ownerKey: folder.ownerKey ?? null,
       followsOwner: Boolean(folder.ownerKey),
       createdAt: timestamp,

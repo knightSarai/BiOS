@@ -105,7 +105,6 @@ describe("upgrading from version 2", () => {
     expect(newer!.sortKey < older!.sortKey).toBe(true)
     expect(newer).toMatchObject({
       icon: DEFAULT_DOCUMENT_ICON,
-      journal: null,
       excerpt: "",
     })
     expect((await db.activities.get("a1"))?.goalId).toBeNull()
@@ -130,5 +129,49 @@ describe("upgrading from version 6", () => {
     openDbs.push(db)
     expect((await db.documents.get("plain"))?.icon).toBe(DEFAULT_DOCUMENT_ICON)
     expect((await db.documents.get("custom"))?.icon).toBe("🥊")
+  })
+})
+
+describe("upgrading from version 7", () => {
+  it("turns journal folders and pages into ordinary items in place", async () => {
+    const name = `documents-upgrade-8-${crypto.randomUUID()}`
+    const old = new Dexie(name, { addons: [yDexie] })
+    old.version(7).stores({
+      documents:
+        "id, workspaceId, [workspaceId+updatedAt], [workspaceId+folderId], [workspaceId+journalKey], content: Y.Doc",
+      folders:
+        "id, workspaceId, [workspaceId+parentId], [workspaceId+ownerKey]",
+    })
+    await old.table("folders").bulkAdd([
+      { id: "journal", workspaceId: "ws-1", role: "journal", period: "" },
+      {
+        id: "nov",
+        workspaceId: "ws-1",
+        role: "journal-month",
+        period: "2026-11",
+      },
+      { id: "areas", workspaceId: "ws-1", role: "areas", period: null },
+    ])
+    await old.table("documents").add({
+      id: "day",
+      workspaceId: "ws-1",
+      title: "Sat 7 Nov",
+      folderId: "nov",
+      journal: { period: "day", key: "2026-11-07", date: "2026-11-07" },
+      journalKey: "day:2026-11-07",
+    })
+    old.close()
+
+    const db = createLocalDb(name)
+    openDbs.push(db)
+    const folders = await db.folders.toArray()
+    expect(
+      Object.fromEntries(folders.map((folder) => [folder.id, folder.role]))
+    ).toEqual({ journal: "plain", nov: "plain", areas: "areas" })
+    expect(folders.every((folder) => !("period" in folder))).toBe(true)
+    const day = await db.documents.get("day")
+    expect(day?.folderId).toBe("nov")
+    expect(day).not.toHaveProperty("journal")
+    expect(day).not.toHaveProperty("journalKey")
   })
 })

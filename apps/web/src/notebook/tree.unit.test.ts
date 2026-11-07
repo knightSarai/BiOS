@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest"
 import type { FolderRole } from "@/local-db/db"
-import type { JournalRef } from "@/journal/periods"
 import type { OwnerKey } from "./owners"
 import {
   buildTree,
@@ -19,7 +18,6 @@ type Folder = {
   name: string
   sortKey: string
   role: FolderRole
-  period: string | null
   ownerKey: OwnerKey | null
 }
 
@@ -29,7 +27,6 @@ type Doc = {
   title: string
   sortKey: string
   icon: string | null
-  journal: JournalRef | null
 }
 
 const folder = (
@@ -42,7 +39,6 @@ const folder = (
   name: id,
   sortKey: "V",
   role: "plain",
-  period: null,
   ownerKey: null,
   ...extra,
 })
@@ -53,7 +49,6 @@ const doc = (id: string, folderId: string, extra: Partial<Doc> = {}): Doc => ({
   title: id,
   sortKey: "V",
   icon: null,
-  journal: null,
   ...extra,
 })
 
@@ -94,41 +89,6 @@ describe("buildTree", () => {
 
   it("puts orphans at the top level", () => {
     expect(labels(buildTree([], [doc("lost", "gone")]))).toEqual(["lost"])
-  })
-
-  it("sorts journal folders newest first with the year page and Weeks on top", () => {
-    const journalFolders = [
-      folder("journal", "root", { role: "journal" }),
-      folder("2026", "journal", { role: "journal-year", period: "2026" }),
-      folder("oct", "2026", { role: "journal-month", period: "2026-10" }),
-      folder("nov", "2026", { role: "journal-month", period: "2026-11" }),
-      folder("weeks", "2026", { role: "journal-weeks", period: "2026" }),
-    ]
-    const tree = buildTree(journalFolders, [
-      doc("Year 2026", "2026", {
-        journal: { period: "year", key: "2026", date: "2026-01-01" },
-      }),
-      doc("Sat 31 Oct", "oct", {
-        journal: { period: "day", key: "2026-10-31", date: "2026-10-31" },
-      }),
-      doc("Fri 30 Oct", "oct", {
-        journal: { period: "day", key: "2026-10-30", date: "2026-10-30" },
-      }),
-    ])
-    expect(labels(tree)).toEqual([
-      {
-        journal: [
-          {
-            "2026": [
-              "Year 2026",
-              { weeks: [] },
-              { nov: [] },
-              { oct: ["Sat 31 Oct", "Fri 30 Oct"] },
-            ],
-          },
-        ],
-      },
-    ])
   })
 })
 

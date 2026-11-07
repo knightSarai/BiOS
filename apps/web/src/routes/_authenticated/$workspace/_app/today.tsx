@@ -4,7 +4,7 @@ import { now, toLocalDate } from "@knight-os/server/core"
 import { documentQuery } from "@/local-db/document-queries"
 import { notebookContext, notebookTreeQuery } from "@/local-db/notebook-queries"
 import { DocumentView } from "@/notebook/components/DocumentView"
-import { ensureJournalPage } from "@/notebook/use-cases"
+import { ensureDailyNote } from "@/notebook/use-cases"
 
 export const Route = createFileRoute("/_authenticated/$workspace/_app/today")({
   ssr: false,
@@ -12,10 +12,10 @@ export const Route = createFileRoute("/_authenticated/$workspace/_app/today")({
   loader: async ({ context }) => {
     const workspace = context.workspace
     const today = toLocalDate(now(), workspace.settings.timezone)
-    const documentId = await ensureJournalPage(
+    const documentId = await ensureDailyNote(
       notebookContext(workspace.id),
-      "day",
-      today
+      today,
+      workspace.settings
     )
     await Promise.all([
       context.queryClient.ensureQueryData(

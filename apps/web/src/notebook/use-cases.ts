@@ -2,13 +2,7 @@ import type { AreaColor } from "@/activities/areas"
 import { activityKey } from "@/activities/areas"
 import type { ActivityStatus } from "@/activities/status"
 import type { GoalStatus } from "@/goals/status"
-import {
-  journalFolderPath,
-  journalKeyOf,
-  journalRefFor,
-  journalTitle,
-  type JournalPeriod,
-} from "@/journal/periods"
+import { dailyNoteLocation, type DailyNoteFormat } from "@/journal/daily-note"
 import type { ActivitiesRepository } from "@/local-db/activities"
 import type { AreasRepository } from "@/local-db/areas"
 import type { AttachmentsRepository } from "@/local-db/attachments"
@@ -72,19 +66,14 @@ type OwnerSummary =
 
 type DocumentSummary = Pick<
   DocumentRow,
-  "id" | "title" | "icon" | "journal" | "updatedAt" | "folderId" | "excerpt"
+  "id" | "title" | "icon" | "updatedAt" | "folderId" | "excerpt"
 > & { path: string[] }
 
 const ensureSystemFolder = (
   ctx: NotebookContext,
   parentId: string,
-  spec: { role: FolderRole; name: string; period?: string | null }
-) =>
-  ctx.folders.findOrCreateChild(parentId, {
-    role: spec.role,
-    name: spec.name,
-    period: spec.period ?? null,
-  })
+  spec: { role: FolderRole; name: string }
+) => ctx.folders.findOrCreateChild(parentId, spec)
 
 const describeOwner = async (
   ctx: NotebookContext,
@@ -220,7 +209,6 @@ const summarizeDocuments = (
     id: document.id,
     title: document.title,
     icon: document.icon,
-    journal: document.journal,
     updatedAt: document.updatedAt,
     folderId: document.folderId,
     excerpt: document.excerpt,
@@ -384,7 +372,7 @@ type FolderMove = {
 
 class SystemFolderMoveError extends Error {}
 
-// Areas, Goals, Activities and Journal folders are found by their place, so they stay put.
+// Areas, Goals and Activities folders are found by their place, so they stay put.
 const isMovableFolder = (folder: Pick<FolderRow, "role">) =>
   folder.role === "plain"
 
@@ -438,23 +426,17 @@ const undoFolderMove = async (ctx: NotebookContext, move: FolderMove) => {
   }
 }
 
-const ensureJournalPage = async (
+const ensureDailyNote = async (
   ctx: NotebookContext,
-  period: JournalPeriod,
-  date: string
+  date: string,
+  format: DailyNoteFormat
 ) => {
-  const ref = journalRefFor(period, date)
-  const existing = await ctx.documents.byJournalKey(journalKeyOf(ref))
-  if (existing) return existing.id
+  const location = dailyNoteLocation(date, format)
   let parentId = ROOT_FOLDER_ID
-  for (const spec of journalFolderPath(ref)) {
-    parentId = (await ensureSystemFolder(ctx, parentId, spec)).id
+  for (const name of location.folders) {
+    parentId = (await ctx.folders.findOrCreatePlainChild(parentId, name)).id
   }
-  return ctx.documents.findOrCreateJournalPage({
-    folderId: parentId,
-    title: journalTitle(ref),
-    journal: ref,
-  })
+  return ctx.documents.findOrCreateInFolder(parentId, location.title)
 }
 
 const listOwners = async (ctx: NotebookContext): Promise<OwnerSummary[]> => {
@@ -501,8 +483,8 @@ export {
   describeOwner,
   describeOwnerKey,
   documentDetails,
+  ensureDailyNote,
   ensureEntityFolder,
-  ensureJournalPage,
   entityDocuments,
   isMovableFolder,
   listOwners,

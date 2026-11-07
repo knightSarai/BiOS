@@ -44,6 +44,15 @@ const seedDocumentWithTitle = (ydoc: Y.Doc, title: string) => {
   if (title) titleElement.insert(0, [new Y.XmlText(title)])
 }
 
+// y-dexie stores content updates in Yjs's V2 encoding.
+const titledContentUpdate = (title: string) => {
+  const ydoc = new Y.Doc()
+  seedDocumentWithTitle(ydoc, title)
+  const update = Y.encodeStateAsUpdateV2(ydoc)
+  ydoc.destroy()
+  return update
+}
+
 // Notes replace the seed's empty first paragraph, one paragraph per line.
 const seedDocumentNotes = (ydoc: Y.Doc, notes: string) => {
   const lines = notes.trim().split("\n")
@@ -78,5 +87,6 @@ export {
   seedDocument,
   seedDocumentNotes,
   seedDocumentWithTitle,
+  titledContentUpdate,
   titleOf,
 }

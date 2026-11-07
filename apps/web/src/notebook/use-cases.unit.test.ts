@@ -12,8 +12,8 @@ import { indexFolders, pathTo } from "./tree"
 import {
   createDocumentFor,
   documentDetails,
+  ensureDailyNote,
   ensureEntityFolder,
-  ensureJournalPage,
   entityDocuments,
   moveDocument,
   moveFolder,
@@ -247,40 +247,65 @@ describe("deleting", () => {
   })
 })
 
-describe("journal pages", () => {
-  it("creates a day page once, under Journal, year and month", async () => {
+const isoFormat = { dateOrder: "YMD", dateSeparator: "-" } as const
+
+describe("daily notes", () => {
+  it("creates the note once, under Journal, Daily, year and month", async () => {
     const { ctx } = await setup()
     const [a, b] = await Promise.all([
-      ensureJournalPage(ctx, "day", "2026-11-01"),
-      ensureJournalPage(ctx, "day", "2026-11-01"),
+      ensureDailyNote(ctx, "2026-11-07", isoFormat),
+      ensureDailyNote(ctx, "2026-11-07", isoFormat),
     ])
     expect(a).toBe(b)
-    const page = await ctx.documents.byId(a)
-    expect(page?.title).toBe("Sun 1 Nov")
-    expect(await folderPath(ctx, page!.folderId)).toEqual([
+    const note = await ctx.documents.byId(a)
+    expect(note?.title).toBe("2026-11-07")
+    expect(await folderPath(ctx, note!.folderId)).toEqual([
       "Journal",
+      "Daily",
       "2026",
-      "November",
+      "Nov",
     ])
   })
 
-  it("puts week pages in the year's Weeks folder", async () => {
+  it("makes a new note when the old one was moved or renamed", async () => {
     const { ctx } = await setup()
-    const dayId = await ensureJournalPage(ctx, "day", "2026-11-01")
-    const weekId = await ensureJournalPage(ctx, "week", "2026-11-01")
-    const week = await ctx.documents.byId(weekId)
-    expect(week?.title).toBe("Week 44 · 26 Oct – 1 Nov")
-    expect(await folderPath(ctx, week!.folderId)).toEqual([
-      "Journal",
-      "2026",
-      "Weeks",
-    ])
-    const day = await ctx.documents.byId(dayId)
-    const yearFolders = (await ctx.folders.list()).filter(
-      (folder) => folder.role === "journal-year"
+    const first = await ensureDailyNote(ctx, "2026-11-07", isoFormat)
+    const elsewhere = await ctx.folders.create({ name: "Elsewhere" })
+    await moveDocument(ctx, first, elsewhere.id)
+    const second = await ensureDailyNote(ctx, "2026-11-07", isoFormat)
+    expect(second).not.toBe(first)
+
+    await ctx.documents.rename(second, "Saturday")
+    const third = await ensureDailyNote(ctx, "2026-11-07", isoFormat)
+    expect(third).not.toBe(second)
+  })
+
+  it("lets the Journal folder be moved, and starts a new one at the top level", async () => {
+    const { ctx } = await setup()
+    const first = await ensureDailyNote(ctx, "2026-11-07", isoFormat)
+    const journal = (await ctx.folders.list()).find(
+      (folder) => folder.name === "Journal"
     )
-    expect(yearFolders).toHaveLength(1)
-    expect(day?.journal?.period).toBe("day")
+    const archive = await ctx.folders.create({ name: "Archive" })
+    await moveFolder(ctx, journal!.id, archive.id)
+    const next = await ensureDailyNote(ctx, "2026-11-08", isoFormat)
+    const note = await ctx.documents.byId(next)
+    expect(await folderPath(ctx, note!.folderId)).toEqual([
+      "Journal",
+      "Daily",
+      "2026",
+      "Nov",
+    ])
+    expect((await ctx.documents.byId(first))?.folderId).not.toBe(note!.folderId)
+  })
+
+  it("files into a Journal folder the user already has", async () => {
+    const { ctx } = await setup()
+    const journal = await ctx.folders.create({ name: "Journal" })
+    const id = await ensureDailyNote(ctx, "2026-11-07", isoFormat)
+    const note = await ctx.documents.byId(id)
+    const path = pathTo(note!.folderId, indexFolders(await ctx.folders.list()))
+    expect(path[0].id).toBe(journal.id)
   })
 })
 
@@ -332,17 +357,17 @@ describe("review fixes", () => {
     expect(a?.sortKey).not.toBe(b?.sortKey)
   })
 
-  it("creates one day page even when two tabs open Today at once", async () => {
+  it("creates one daily note even when two tabs open Today at once", async () => {
     const { db } = await setup()
     const tabA = contextFor(db, "ws-1")
     const tabB = contextFor(db, "ws-1")
     const [a, b] = await Promise.all([
-      ensureJournalPage(tabA, "day", "2026-11-02"),
-      ensureJournalPage(tabB, "day", "2026-11-02"),
+      ensureDailyNote(tabA, "2026-11-02", isoFormat),
+      ensureDailyNote(tabB, "2026-11-02", isoFormat),
     ])
     expect(a).toBe(b)
     const months = (await tabA.folders.list()).filter(
-      (folder) => folder.role === "journal-month"
+      (folder) => folder.name === "Nov"
     )
     expect(months).toHaveLength(1)
   })

@@ -11,6 +11,7 @@ import type { MentionBridge } from "../mention-bridge"
 import type { EditorContent } from "../mention-index"
 import { activeLinkHref, isInTitle } from "../commands"
 import { mountEditor } from "../mount-editor"
+import { DocumentOutline } from "./DocumentOutline"
 import { createEditorAtoms } from "./editor-atoms"
 import { MentionMenu } from "./MentionMenu"
 import { createMentionHoverAtom, MentionPreview } from "./MentionPreview"
@@ -113,53 +114,61 @@ function DocumentEditor({
   }
 
   return (
-    <div
-      className="relative"
-      onMouseLeave={() => store.set(mentionHoverAtom, null)}
-      onMouseOver={(event) => {
-        const chip =
-          event.target instanceof Element
-            ? event.target.closest("[data-mention-id]")
-            : null
-        const current = store.get(mentionHoverAtom)
-        if (chip instanceof HTMLElement && chip.dataset.mentionId) {
-          if (current?.anchor !== chip) {
-            store.set(mentionHoverAtom, {
-              documentId: chip.dataset.mentionId,
-              anchor: chip,
-            })
+    <>
+      {/* Outside the relative wrapper so it positions against Page.Layout and sits at the pane's left edge. */}
+      <DocumentOutline atoms={atoms} />
+      <div
+        className="relative"
+        onMouseLeave={() => store.set(mentionHoverAtom, null)}
+        onMouseOver={(event) => {
+          const chip =
+            event.target instanceof Element
+              ? event.target.closest("[data-mention-id]")
+              : null
+          const current = store.get(mentionHoverAtom)
+          if (chip instanceof HTMLElement && chip.dataset.mentionId) {
+            if (current?.anchor !== chip) {
+              store.set(mentionHoverAtom, {
+                documentId: chip.dataset.mentionId,
+                anchor: chip,
+              })
+            }
+          } else if (current) {
+            store.set(mentionHoverAtom, null)
           }
-        } else if (current) {
-          store.set(mentionHoverAtom, null)
-        }
-      }}
-    >
-      <div ref={mountRef} />
-      {titleAccessoryElement
-        ? createPortal(titleAccessory, titleAccessoryElement)
-        : null}
-      <SlashMenu atoms={atoms} menuId={slashMenuId} />
-      {mentions ? (
-        <>
-          <MentionMenu atoms={atoms} bridge={mentions} menuId={mentionMenuId} />
-          <MentionPreview hoverAtom={mentionHoverAtom} bridge={mentions} />
-        </>
-      ) : null}
-      <DrawingEditorDialog
-        editorAtom={atoms.drawingEditor}
-        openAtom={atoms.drawingOpen}
-        onClosed={releaseDrawing}
-      />
-      {coarsePointer ? (
-        <MobileEditorBar
-          atoms={atoms}
-          blockLink={blockLink}
-          activities={activities}
+        }}
+      >
+        <div ref={mountRef} />
+        {titleAccessoryElement
+          ? createPortal(titleAccessory, titleAccessoryElement)
+          : null}
+        <SlashMenu atoms={atoms} menuId={slashMenuId} />
+        {mentions ? (
+          <>
+            <MentionMenu
+              atoms={atoms}
+              bridge={mentions}
+              menuId={mentionMenuId}
+            />
+            <MentionPreview hoverAtom={mentionHoverAtom} bridge={mentions} />
+          </>
+        ) : null}
+        <DrawingEditorDialog
+          editorAtom={atoms.drawingEditor}
+          openAtom={atoms.drawingOpen}
+          onClosed={releaseDrawing}
         />
-      ) : (
-        <SelectionToolbar atoms={atoms} activities={activities} />
-      )}
-    </div>
+        {coarsePointer ? (
+          <MobileEditorBar
+            atoms={atoms}
+            blockLink={blockLink}
+            activities={activities}
+          />
+        ) : (
+          <SelectionToolbar atoms={atoms} activities={activities} />
+        )}
+      </div>
+    </>
   )
 }
 

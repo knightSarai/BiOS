@@ -16,6 +16,7 @@ const createEditorAtoms = () => ({
   drawingEditor: atom<DrawingEditor | null>(null),
   drawingOpen: atom(false),
   drawingStyle: atom<ShapeStyle>(DEFAULT_SHAPE_STYLE),
+  activeHeading: atom(0),
 })
 
 type EditorAtoms = ReturnType<typeof createEditorAtoms>

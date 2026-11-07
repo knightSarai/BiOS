@@ -7,6 +7,36 @@ type RenderedDiagram =
 
 const fontFamily = '"Inter Variable", Inter, system-ui, sans-serif'
 
+// The --chart-1…5 colours from styles.css, the same in light and dark.
+const chartColors = ["#b98ac0", "#d27f9b", "#7e9cd8", "#d9a441", "#5fb3a6"]
+
+const chartVariables = (text: string, line: string, background: string) => ({
+  ...Object.fromEntries(
+    chartColors.map((color, index) => [`pie${index + 1}`, color])
+  ),
+  pieOpacity: "1",
+  pieStrokeColor: background,
+  pieOuterStrokeColor: background,
+  pieSectionTextColor: "#201e1f",
+  pieTitleTextColor: text,
+  pieLegendTextColor: text,
+  xyChart: {
+    backgroundColor: background,
+    titleColor: text,
+    dataLabelColor: text,
+    legendTextColor: text,
+    xAxisTitleColor: text,
+    xAxisLabelColor: text,
+    xAxisTickColor: line,
+    xAxisLineColor: line,
+    yAxisTitleColor: text,
+    yAxisLabelColor: text,
+    yAxisTickColor: line,
+    yAxisLineColor: line,
+    plotColorPalette: chartColors.join(","),
+  },
+})
+
 // Mermaid's theming only understands hex colours, so these mirror styles.css.
 const themeVariables = {
   light: {
@@ -23,6 +53,7 @@ const themeVariables = {
     noteTextColor: "#2c2c2c",
     fontFamily,
     fontSize: "14px",
+    ...chartVariables("#2c2c2c", "#5c575a", "#ffffff"),
   },
   dark: {
     darkMode: true,
@@ -39,6 +70,7 @@ const themeVariables = {
     noteTextColor: "#f3f4f4",
     fontFamily,
     fontSize: "14px",
+    ...chartVariables("#f3f4f4", "#b3aeb1", "#201e1f"),
   },
 } satisfies Record<DiagramTheme, MermaidConfig["themeVariables"]>
 

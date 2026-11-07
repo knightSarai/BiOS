@@ -5,7 +5,7 @@ import { nodes } from "./schema"
 const DIAGRAM_PREVIEWS = "diagramPreviews"
 
 // Bump when the render setup changes (theme, fonts) so cached previews redraw.
-const DIAGRAM_PREVIEW_VERSION = 1
+const DIAGRAM_PREVIEW_VERSION = 2
 
 // Rendered once by whoever edits the source, so clients that can't run Mermaid
 // (mobile, exports) can still show the diagram.

@@ -23,9 +23,8 @@ function OwnerLink({
   if (owner.kind === "area") {
     return (
       <Link
-        to="/$workspace/activities"
-        params={{ workspace: workspaceSlug }}
-        search={{ area: owner.id }}
+        to="/$workspace/areas/$areaId"
+        params={{ workspace: workspaceSlug, areaId: owner.id }}
         className={className}
         aria-label={ariaLabel}
         onClick={onClick}

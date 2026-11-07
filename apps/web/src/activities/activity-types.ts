@@ -1,7 +1,5 @@
-import { AREA_COLORS, type AreaColor } from "./areas"
+import type { AreaColor } from "./areas"
 import { ACTIVITY_STATUSES, statusLabels, type ActivityStatus } from "./status"
-
-const TYPE_COLORS = AREA_COLORS
 
 type TypeColor = AreaColor
 
@@ -18,5 +16,5 @@ const cleanStatusNames = (names: StatusNames): StatusNames =>
     })
   )
 
-export { TYPE_COLORS, cleanStatusNames, statusName }
+export { cleanStatusNames, statusName }
 export type { StatusNames, TypeColor }

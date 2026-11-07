@@ -2,9 +2,8 @@ import { useQuery } from "@tanstack/react-query"
 import { ClientOnly, Link } from "@tanstack/react-router"
 import { useSetAtom } from "jotai"
 import { Plus } from "lucide-react"
-import { areaDotClassNames } from "@/activities/areas"
+import { ColorDot } from "@/activities/components/ColorDot"
 import { areasQuery } from "@/local-db/activity-queries"
-import { cn } from "@/lib/utils"
 import { navRowClassName } from "@layout/core/AppShell"
 import { newAreaDialogOpenAtom } from "./atoms"
 
@@ -19,19 +18,12 @@ function AreaLinks({ workspace, onNavigate }: AreasNavProps) {
   return areas?.map((area) => (
     <Link
       key={area.id}
-      to="/$workspace/activities"
-      params={{ workspace: workspace.slug }}
-      search={{ area: area.id }}
-      activeOptions={{ includeSearch: true }}
+      to="/$workspace/areas/$areaId"
+      params={{ workspace: workspace.slug, areaId: area.id }}
       onClick={onNavigate}
       className={navRowClassName}
     >
-      <span
-        className={cn(
-          "mx-1 size-2 shrink-0 rounded-full",
-          areaDotClassNames[area.color]
-        )}
-      />
+      <ColorDot color={area.color} className="mx-1 size-2 shrink-0" />
       <span className="flex-1 truncate">{area.name}</span>
       {area.openCount > 0 ? (
         <span className="text-xs text-muted-foreground tabular-nums">

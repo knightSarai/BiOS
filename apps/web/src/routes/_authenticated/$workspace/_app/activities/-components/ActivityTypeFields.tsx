@@ -200,6 +200,7 @@ function ActivityFields({
           field={field}
           value={activity.fields[field.id] as FieldValue | undefined}
           timezone={workspace.timezone}
+          layout="stacked"
           commitOnBlur
           onChange={(value) =>
             setField.mutate(

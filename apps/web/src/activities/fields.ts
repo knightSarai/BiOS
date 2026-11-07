@@ -112,6 +112,16 @@ const keepValidValues = (
     return parsed.success ? { ...result, [field.id]: parsed.data } : result
   }, {})
 
+const invalidFields = <Field extends FieldDefinition>(
+  fields: Field[],
+  values: Record<string, unknown>
+) =>
+  fields.filter((field) => {
+    const value = values[field.id]
+    if (value === null || value === undefined) return false
+    return !valueSchema(field).safeParse(value).success
+  })
+
 const kindHasOptions = (kind: FieldKind) =>
   kind === "choice" || kind === "multiChoice"
 
@@ -150,6 +160,7 @@ export {
   InvalidFieldValueError,
   fieldKindLabels,
   formatFieldValue,
+  invalidFields,
   keepValidValues,
   kindHasOptions,
   parseFieldValues,

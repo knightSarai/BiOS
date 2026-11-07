@@ -1,7 +1,6 @@
-import { areaDotClassNames } from "@/activities/areas"
+import { ColorDot } from "@/activities/components/ColorDot"
 import { StatusIcon } from "@/activities/components/StatusIcon"
 import { GoalIcon } from "@/goals/components/GoalIcon"
-import { cn } from "@/lib/utils"
 import type { OwnerSummary } from "../use-cases"
 
 const ownerTitle = (owner: OwnerSummary) =>
@@ -17,12 +16,10 @@ function OwnerIcon({ owner }: { owner: OwnerSummary }) {
   if (owner.kind === "activity") return <StatusIcon status={owner.status} />
   if (owner.kind === "area") {
     return (
-      <span
+      <ColorDot
         aria-hidden
-        className={cn(
-          "mx-1 size-2 shrink-0 rounded-full",
-          areaDotClassNames[owner.color]
-        )}
+        color={owner.color}
+        className="mx-1 size-2 shrink-0"
       />
     )
   }

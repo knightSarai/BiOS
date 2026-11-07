@@ -5,12 +5,13 @@ import { FieldGroup } from "@/components/ui/field"
 import { useAppForm } from "@/hooks/form"
 import { useCreateActivityType } from "@/local-db/activity-type-mutations"
 import type { ActivityTypeRow } from "@/local-db/db"
-import { TYPE_COLORS, type TypeColor } from "../activity-types"
-import { TypeColorPicker } from "./TypeColorPicker"
+import type { TypeColor } from "../activity-types"
+import { colorSchema } from "../areas"
+import { ColorPicker } from "./ColorPicker"
 
 const newTypeSchema = z.object({
   name: z.string().trim().min(1, "Give the type a name."),
-  color: z.enum(TYPE_COLORS),
+  color: colorSchema,
 })
 
 function NewTypeForm({
@@ -61,7 +62,7 @@ function NewTypeForm({
         </form.AppField>
         <form.Field name="color">
           {(field) => (
-            <TypeColorPicker
+            <ColorPicker
               value={field.state.value}
               onChange={field.handleChange}
             />

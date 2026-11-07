@@ -1,6 +1,13 @@
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
-import { CalendarDays, ChevronDown, FileText, Target } from "lucide-react"
+import { useSetAtom } from "jotai"
+import {
+  CalendarDays,
+  ChevronDown,
+  CornerLeftUp,
+  FileText,
+  Target,
+} from "lucide-react"
 import {
   formatActivityTimestamp,
   formatDayLabel,
@@ -23,11 +30,16 @@ import {
   useSetActivityStatus,
 } from "@/local-db/activity-mutations"
 import { goalListQuery } from "@/local-db/goal-queries"
-import { activityQuery, areasQuery } from "@/local-db/activity-queries"
+import {
+  activityQuery,
+  activitySummaryQuery,
+  areasQuery,
+} from "@/local-db/activity-queries"
 import type { ActivityOrigin, ActivityRow } from "@/local-db/db"
 import { documentQuery } from "@/local-db/document-queries"
 import { cn } from "@/lib/utils"
 import { TypeControl, useActivityType } from "./ActivityTypeFields"
+import { openParentDialogAtom } from "./ParentDialog"
 
 type Workspace = {
   id: string
@@ -99,6 +111,13 @@ function OriginLink({
   }
 
   const parentRow = parent.data
+  if (parentRow === null) {
+    return (
+      <span className={cn(className, "text-muted-foreground")}>
+        Deleted activity
+      </span>
+    )
+  }
   return (
     <Link
       to="/$workspace/activities/$activityId"
@@ -253,6 +272,63 @@ function DueDateControl({
   )
 }
 
+function ParentControl({
+  activity,
+  activityKey,
+  workspace,
+  className,
+}: PropertyControlProps & { activityKey: string }) {
+  const openParentDialog = useSetAtom(openParentDialogAtom)
+  const { data: parent } = useQuery({
+    ...activitySummaryQuery(workspace.id, activity.parentId ?? ""),
+    enabled: activity.parentId !== null,
+  })
+  const label = parent ? `${parent.key} ${parent.title}` : "No parent"
+
+  return (
+    <button
+      type="button"
+      aria-label={`Parent: ${label}`}
+      className={className}
+      onClick={() =>
+        openParentDialog({
+          activityId: activity.id,
+          activityKey,
+          hasParent: activity.parentId !== null,
+        })
+      }
+    >
+      {parent ? (
+        <StatusIcon status={parent.status} />
+      ) : (
+        <CornerLeftUp className="size-3.5 shrink-0 text-muted-foreground" />
+      )}
+      <span
+        className={cn("flex-1 truncate", !parent && "text-muted-foreground")}
+      >
+        {parent ? (
+          <>
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {parent.key}
+            </span>{" "}
+            {parent.title || "Untitled"}
+          </>
+        ) : (
+          "No parent"
+        )}
+      </span>
+    </button>
+  )
+}
+
+// The parent header already says where a sub-activity written in its parent came from.
+const showsOrigin = (activity: ActivityRow) =>
+  activity.origin !== null &&
+  !(
+    activity.origin.kind === "activity" &&
+    activity.origin.activityId === activity.parentId
+  )
+
 function CreatedAt({ activity, workspace, className }: PropertyControlProps) {
   return (
     <span className={className}>
@@ -311,6 +387,14 @@ function ActivityProperties({ activity, workspace }: ActivityPropertiesProps) {
           className={propertyButtonClassName}
         />
       </Property>
+      <Property label="Parent">
+        <ParentControl
+          activity={activity}
+          activityKey={key}
+          workspace={workspace}
+          className={propertyButtonClassName}
+        />
+      </Property>
       <Property label="Due">
         <DueDateControl
           activity={activity}
@@ -318,7 +402,7 @@ function ActivityProperties({ activity, workspace }: ActivityPropertiesProps) {
           className={propertyButtonClassName}
         />
       </Property>
-      {activity.origin ? (
+      {activity.origin && showsOrigin(activity) ? (
         <Property label="Written in">
           <OriginLink
             origin={activity.origin}
@@ -364,6 +448,12 @@ function ActivityPropertyChips({
         workspace={workspace}
         className={chipClassName}
       />
+      <ParentControl
+        activity={activity}
+        activityKey={key}
+        workspace={workspace}
+        className={chipClassName}
+      />
       <DueDateControl
         activity={activity}
         workspace={workspace}
@@ -374,7 +464,7 @@ function ActivityPropertyChips({
 }
 
 function ActivityOriginLink({ activity, workspace }: ActivityPropertiesProps) {
-  if (!activity.origin) return null
+  if (!activity.origin || !showsOrigin(activity)) return null
   return (
     <OriginLink
       origin={activity.origin}

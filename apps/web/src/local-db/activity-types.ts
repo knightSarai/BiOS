@@ -5,6 +5,7 @@ import {
   type TypeColor,
 } from "@/activities/activity-types"
 import type { ActivityStatus } from "@/activities/status"
+import { parseTimerConfig, type TimerConfig } from "@/activities/timer"
 import {
   keepValidValues,
   kindHasOptions,
@@ -28,6 +29,7 @@ type ActivityTypeChanges = {
   color?: TypeColor
   icon?: string | null
   statusNames?: StatusNames
+  timer?: TimerConfig | null
 }
 
 type NewField = {
@@ -94,6 +96,7 @@ class ActivityTypesRepository {
       color: type.color,
       icon: null,
       statusNames: {},
+      timer: null,
       createdAt: timestamp,
       updatedAt: timestamp,
     }
@@ -113,6 +116,12 @@ class ActivityTypesRepository {
       ...(changes.statusNames === undefined
         ? {}
         : { statusNames: cleanStatusNames(changes.statusNames) }),
+      ...(changes.timer === undefined
+        ? {}
+        : {
+            timer:
+              changes.timer === null ? null : parseTimerConfig(changes.timer),
+          }),
       updatedAt: parseUtc(now()),
     })
   }

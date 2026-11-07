@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   addCivilDays,
+  addSeconds,
   composeDateFormatPattern,
   endOfDayUtc,
   formatActivityTimestamp,
@@ -21,6 +22,7 @@ import {
   oneMillisecondBefore,
   parseUtc,
   sameInstant,
+  secondsBetween,
   startOfDayUtc,
   toCivilDate,
   toLocalDate,
@@ -121,6 +123,27 @@ describe("utcPlusSeconds", () => {
     expect(parseUtc(result)).toBe(result)
     expect(new Date(result).getTime()).toBeGreaterThanOrEqual(before + 300_000)
     expect(new Date(result).getTime()).toBeLessThanOrEqual(after + 300_000)
+  })
+})
+
+describe("addSeconds", () => {
+  it("moves an instant by whole and fractional seconds", () => {
+    const start = parseUtc("2026-11-07T10:00:00.000Z")
+    expect(addSeconds(start, 90)).toBe("2026-11-07T10:01:30.000Z")
+    expect(addSeconds(start, 1.5)).toBe("2026-11-07T10:00:01.500Z")
+    expect(addSeconds(start, -60)).toBe("2026-11-07T09:59:00.000Z")
+  })
+})
+
+describe("secondsBetween", () => {
+  it("returns the signed gap in seconds, keeping milliseconds", () => {
+    const start = parseUtc("2026-11-07T10:00:00.000Z")
+    expect(secondsBetween(start, parseUtc("2026-11-07T10:03:00.250Z"))).toBe(
+      180.25
+    )
+    expect(secondsBetween(parseUtc("2026-11-07T10:03:00.000Z"), start)).toBe(
+      -180
+    )
   })
 })
 

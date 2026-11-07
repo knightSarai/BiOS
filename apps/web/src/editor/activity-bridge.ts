@@ -4,6 +4,7 @@ type ActivityChipSummary = {
   key: string
   title: string
   status: ActivityStatus
+  details: string
 }
 
 type ActivityDraft = {

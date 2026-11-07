@@ -51,8 +51,17 @@ import { titleAccessoryPlugin } from "./title-accessory"
 const CONTENT_SAVE_DELAY_MS = 500
 const BLOCK_FLASH_MS = 1600
 
+type EditorHeight = "page" | "fit"
+
+// A page leaves room to scroll past the end; a body that has content below it (an activity's
+// sub-activities) fits its text instead.
+const heightClassNames: Record<EditorHeight, string> = {
+  page: "min-h-[60vh] pb-[40vh]",
+  fit: "min-h-24 pb-4",
+}
+
 const editorClassName = [
-  "min-h-[60vh] pb-[40vh] text-base leading-6 focus-visible:outline-none",
+  "text-base leading-6 focus-visible:outline-none",
   "[&_[data-placeholder]]:before:pointer-events-none [&_[data-placeholder]]:before:float-start [&_[data-placeholder]]:before:h-0",
   "[&_[data-placeholder]]:before:text-muted-foreground/70 [&_[data-placeholder]]:before:content-[attr(data-placeholder)]",
   "[&_.ProseMirror-selectednode]:rounded-sm [&_.ProseMirror-selectednode]:bg-selection [&_.ProseMirror-selectednode]:outline-ring/60",
@@ -72,11 +81,16 @@ type MountEditorOptions = {
   onState: (snapshot: { view: EditorView; state: EditorState } | null) => void
   onContentChange: (content: EditorContent) => void
   onLoaded: (title: string) => void
+  height: EditorHeight
 }
 
-const editorAttributes = (state: EditorState, slashMenuId: string) => {
+const editorAttributes = (
+  state: EditorState,
+  slashMenuId: string,
+  height: EditorHeight
+) => {
   const base = {
-    class: editorClassName,
+    class: `${heightClassNames[height]} ${editorClassName}`,
     "aria-label": "Document",
     "aria-multiline": "true",
     role: "textbox",
@@ -225,7 +239,8 @@ const mountEditor = (options: MountEditorOptions) => {
         { diagramPreviews, drawingPreviews },
         options.mentions
       ),
-      attributes: (state) => editorAttributes(state, options.slashMenuId),
+      attributes: (state) =>
+        editorAttributes(state, options.slashMenuId, options.height),
       transformCopied: (slice) =>
         withDrawingSnapshots(slice, (drawingId) =>
           JSON.stringify(readShapes(drawingOf(options.ydoc, drawingId)))
@@ -288,4 +303,4 @@ const mountEditor = (options: MountEditorOptions) => {
 }
 
 export { mountEditor }
-export type { MountEditorOptions }
+export type { EditorHeight, MountEditorOptions }

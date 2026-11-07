@@ -177,6 +177,7 @@ class ActivityChipView implements NodeView {
   private status: HTMLButtonElement
   private key: HTMLSpanElement
   private title: HTMLSpanElement
+  private details: HTMLSpanElement
   private unsubscribe: () => void
 
   constructor(
@@ -205,7 +206,11 @@ class ActivityChipView implements NodeView {
     this.title = document.createElement("span")
     this.title.className = "min-w-0 truncate"
 
-    this.dom.append(this.status, this.key, this.title)
+    this.details = document.createElement("span")
+    this.details.className =
+      "max-w-[50%] min-w-0 truncate text-xs text-muted-foreground tabular-nums empty:hidden"
+
+    this.dom.append(this.status, this.key, this.title, this.details)
     this.dom.addEventListener("click", () => this.bridge.open(this.activityId))
     this.unsubscribe = this.subscribe()
   }
@@ -225,6 +230,7 @@ class ActivityChipView implements NodeView {
       this.status.replaceChildren()
       this.status.disabled = true
       this.key.textContent = ""
+      this.details.textContent = ""
       this.title.textContent =
         summary === null ? "Deleted activity" : "Loading activity…"
       this.title.classList.add("text-muted-foreground")
@@ -247,6 +253,7 @@ class ActivityChipView implements NodeView {
       closed || !summary.title
     )
     this.title.classList.toggle("line-through", summary.status === "canceled")
+    this.details.textContent = summary.details
     this.dom.title = `Open ${summary.key} (Enter when selected)`
   }
 

@@ -67,6 +67,7 @@ function DocumentView({ workspace, documentId }: DocumentViewProps) {
               icon={document.icon}
             />
             <DocumentEditor
+              height="page"
               key={documentId}
               ydoc={document.content}
               focusBlockId={

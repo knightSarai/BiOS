@@ -67,6 +67,12 @@ export const now = (): Date => dayjs.utc().toDate()
 export const utcPlusSeconds = (seconds: number) =>
   parseUtc(dayjs.utc().add(seconds, "second").toDate())
 
+export const addSeconds = (instant: UtcDatetime, seconds: number) =>
+  parseUtc(dayjs.utc(instant).add(seconds * 1000, "millisecond").toDate())
+
+export const secondsBetween = (start: UtcDatetime, end: UtcDatetime) =>
+  dayjs.utc(end).diff(dayjs.utc(start), "millisecond") / 1000
+
 const CIVIL_DATE_FORMAT = "YYYY-MM-DD"
 
 

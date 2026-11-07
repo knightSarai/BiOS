@@ -1,7 +1,22 @@
 import { useQuery } from "@tanstack/react-query"
-import { useParams, useRouteContext, useRouter } from "@tanstack/react-router"
+import {
+  Link as RouterLink,
+  useParams,
+  useRouteContext,
+  useRouter,
+} from "@tanstack/react-router"
 import { useSetAtom } from "jotai"
-import { Copy, Hash, Link, Trash, Type } from "lucide-react"
+import {
+  ChevronRight,
+  Copy,
+  CopyPlus,
+  CornerLeftUp,
+  Hash,
+  Link,
+  Trash,
+  Type,
+} from "lucide-react"
+import { toast } from "sonner"
 import { activityKey } from "@/activities/areas"
 import { StatusIcon } from "@/activities/components/StatusIcon"
 import {
@@ -12,7 +27,11 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu"
-import { activityQuery } from "@/local-db/activity-queries"
+import { useDuplicateActivity } from "@/local-db/activity-mutations"
+import {
+  activityQuery,
+  activitySummaryQuery,
+} from "@/local-db/activity-queries"
 import {
   copyToClipboard,
   crumbMenuItemClassName as itemClassName,
@@ -22,15 +41,25 @@ import {
   DeleteActivityDialog,
   deleteActivityDialogOpenAtom,
 } from "./DeleteActivityDialog"
+import { openParentDialogAtom } from "./ParentDialog"
 
 const ROUTE_ID = "/_authenticated/$workspace/_app/activities/$activityId"
 
-function ActivityCrumb() {
+// Annotated because the route's own definition includes this crumb, and the typed
+// parent link would otherwise make their types depend on each other.
+function ActivityCrumb(): React.JSX.Element {
   const { activityId } = useParams({ from: ROUTE_ID })
   const { workspace } = useRouteContext({ from: ROUTE_ID })
   const router = useRouter()
   const openDelete = useSetAtom(deleteActivityDialogOpenAtom)
   const { data: found } = useQuery(activityQuery(workspace.id, activityId))
+  const duplicate = useDuplicateActivity(workspace.id)
+  const openParentDialog = useSetAtom(openParentDialogAtom)
+  const parentId = found?.activity.parentId ?? null
+  const { data: parent } = useQuery({
+    ...activitySummaryQuery(workspace.id, parentId ?? ""),
+    enabled: parentId !== null,
+  })
 
   if (!found) return <PageCrumb>Activity</PageCrumb>
   const { activity, area } = found
@@ -45,8 +74,38 @@ function ActivityCrumb() {
     return new URL(href, document.baseURI).href
   }
 
+  const duplicateActivity = () =>
+    duplicate.mutate(activityId, {
+      onSuccess: (copy) => {
+        if (!copy) return
+        toast.success(`Created ${copy.key} from ${key}`)
+        void router.navigate({
+          to: "/$workspace/activities/$activityId",
+          params: { workspace: workspace.slug, activityId: copy.id },
+        })
+      },
+      onError: () => toast.error(`Couldn't duplicate ${key}.`),
+    })
+
   return (
     <>
+      {parent ? (
+        <>
+          <RouterLink
+            to="/$workspace/activities/$activityId"
+            params={{ workspace: workspace.slug, activityId: parent.id }}
+            title={parent.title}
+            aria-label={`${parent.key} ${parent.title || "Untitled"}`}
+            className="flex min-h-7 shrink-0 items-center rounded-md px-1.5 text-muted-foreground tabular-nums transition-colors hover:bg-accent hover:text-foreground max-md:min-h-11"
+          >
+            {parent.key}
+          </RouterLink>
+          <ChevronRight
+            aria-hidden
+            className="size-3 shrink-0 text-muted-foreground"
+          />
+        </>
+      ) : null}
       <PageCrumb
         icon={<StatusIcon status={activity.status} />}
         actionsLabel={`Actions for ${key}`}
@@ -81,6 +140,27 @@ function ActivityCrumb() {
                 </DropdownMenuItem>
               </DropdownMenuSubContent>
             </DropdownMenuSub>
+            <DropdownMenuItem
+              className={itemClassName}
+              disabled={duplicate.isPending}
+              onClick={duplicateActivity}
+            >
+              <CopyPlus className="text-muted-foreground" />
+              Duplicate
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className={itemClassName}
+              onClick={() =>
+                openParentDialog({
+                  activityId,
+                  activityKey: key,
+                  hasParent: parentId !== null,
+                })
+              }
+            >
+              <CornerLeftUp className="text-muted-foreground" />
+              {parentId ? "Change parent…" : "Set parent…"}
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className={itemClassName}

@@ -8,7 +8,7 @@ import { Kbd } from "@/components/ui/kbd"
 import { EmptyState } from "@/components/common/EmptyState"
 import { activityListQuery, areasQuery } from "@/local-db/activity-queries"
 import { Page } from "@layout/content/Page"
-import { ActivityList } from "./-components/ActivityList"
+import { ActivityList, ActivityListControls } from "./-components/ActivityList"
 
 export const Route = createFileRoute(
   "/_authenticated/$workspace/_app/activities/"
@@ -32,25 +32,33 @@ function ActivitiesPage() {
 
   return (
     <Page.Layout>
-      <Page.Header>
-        <Page.HeaderContent>
-          <Page.Title>Activities</Page.Title>
-        </Page.HeaderContent>
-        <Page.HeaderActions>
+      <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b px-4 py-2.5 md:px-6">
+        <h1 className="text-sm font-medium">Activities</h1>
+        <ActivityListControls className="max-md:order-last max-md:basis-full" />
+        <div className="ml-auto flex items-center gap-2">
           <span className="text-xs text-muted-foreground max-md:hidden">
             Press <Kbd>C</Kbd>
           </span>
           <Button
-            onClick={() => openNewActivity({ areaId: null, goalId: null })}
+            size="sm"
+            className="max-md:h-11"
+            onClick={() =>
+              openNewActivity({
+                areaId: null,
+                goalId: null,
+                typeId: null,
+                parent: null,
+              })
+            }
           >
             <Plus data-icon="inline-start" />
             New activity
           </Button>
-        </Page.HeaderActions>
-      </Page.Header>
+        </div>
+      </header>
       <Page.Body>
         <Page.ScrollArea>
-          <Page.Content>
+          <div className="px-2 py-3 md:px-4">
             {activities.length === 0 ? (
               <EmptyState.Root>
                 <EmptyState.Icon icon={CircleDashed} />
@@ -67,9 +75,10 @@ function ActivitiesPage() {
                 areas={areas}
                 workspaceId={workspace.id}
                 workspaceSlug={workspace.slug}
+                timezone={workspace.settings.timezone}
               />
             )}
-          </Page.Content>
+          </div>
         </Page.ScrollArea>
       </Page.Body>
     </Page.Layout>

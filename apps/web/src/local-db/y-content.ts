@@ -84,6 +84,7 @@ const readContentUpdates = async (
 
 export {
   contentUpdatesTable,
+  contentWritesSettled,
   readContentUpdates,
   replaceTitleInContent,
   seedContentWithTitle,

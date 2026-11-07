@@ -12,6 +12,7 @@ import {
   useSaveActivityContent,
   useSyncActivityTitle,
 } from "@/local-db/activity-mutations"
+import { activityKey } from "@/activities/areas"
 import {
   activitiesRepository,
   activityQuery,
@@ -30,6 +31,9 @@ import {
   ChangeTypeDialog,
 } from "./-components/ActivityTypeFields"
 import { ActivityCrumb } from "./-components/ActivityCrumb"
+import { ActivityTimer } from "./-components/ActivityTimer"
+import { ParentDialog } from "./-components/ParentDialog"
+import { ParentHeader, SubActivities } from "./-components/SubActivities"
 
 const BLOCK_HASH_PREFIX = "block-"
 
@@ -75,7 +79,8 @@ function ActivityPage() {
     activityId,
   })
   if (!found) return <ActivityNotFound />
-  const { activity } = found
+  const { activity, area } = found
+  const key = activityKey(area?.key ?? "?", activity.number)
   const propertiesWorkspace = {
     id: workspace.id,
     name: workspace.name,
@@ -84,6 +89,7 @@ function ActivityPage() {
   }
   const documentsWorkspace = {
     id: workspace.id,
+    name: workspace.name,
     slug: workspace.slug,
     timezone: workspace.settings.timezone,
   }
@@ -109,6 +115,7 @@ function ActivityPage() {
               />
             </div>
             <DocumentEditor
+              height="fit"
               key={activityId}
               ydoc={activity.content}
               focusBlockId={
@@ -122,18 +129,37 @@ function ActivityPage() {
               activities={activities}
               mentions={mentions}
               titleAccessory={
-                <div className="lg:hidden">
-                  <ActivityPropertyChips
-                    activity={activity}
-                    workspace={propertiesWorkspace}
-                  />
-                  <ActivityFields
-                    activity={activity}
-                    workspace={propertiesWorkspace}
-                    className="mb-6"
-                  />
-                </div>
+                <>
+                  {activity.parentId ? (
+                    <ParentHeader
+                      parentId={activity.parentId}
+                      workspace={documentsWorkspace}
+                    />
+                  ) : null}
+                  <div className="lg:hidden">
+                    <ActivityPropertyChips
+                      activity={activity}
+                      workspace={propertiesWorkspace}
+                    />
+                    <ActivityFields
+                      activity={activity}
+                      workspace={propertiesWorkspace}
+                      className="mb-6"
+                    />
+                    <ActivityTimer
+                      activity={activity}
+                      workspace={propertiesWorkspace}
+                      className="mb-6 rounded-lg border py-3"
+                    />
+                  </div>
+                </>
               }
+            />
+            <SubActivities
+              activity={activity}
+              activityKey={key}
+              workspace={documentsWorkspace}
+              className="border-t pt-4"
             />
             <EntityDocumentsPanel
               owner={{ kind: "activity", id: activityId }}
@@ -149,6 +175,11 @@ function ActivityPage() {
               activity={activity}
               workspace={propertiesWorkspace}
             />
+            <ActivityTimer
+              activity={activity}
+              workspace={propertiesWorkspace}
+              className="border-t pt-4"
+            />
             <ActivityFields
               activity={activity}
               workspace={propertiesWorkspace}
@@ -163,6 +194,7 @@ function ActivityPage() {
         </div>
       </Page.ScrollArea>
       <ChangeTypeDialog workspaceId={workspace.id} />
+      <ParentDialog workspaceId={workspace.id} />
     </Page.Layout>
   )
 }

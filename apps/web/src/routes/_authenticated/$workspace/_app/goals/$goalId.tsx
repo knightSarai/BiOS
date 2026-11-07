@@ -84,6 +84,7 @@ function GoalPage() {
               icon={goal.icon}
             />
             <DocumentEditor
+              height="page"
               key={goalId}
               ydoc={goal.content}
               focusBlockId={

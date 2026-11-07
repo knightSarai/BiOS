@@ -11,7 +11,10 @@ import { Kbd } from "@/components/ui/kbd"
 import { activityListQuery, areasQuery } from "@/local-db/activity-queries"
 import { EntityDocuments } from "@/notebook/components/EntityDocuments"
 import { Page } from "@layout/content/Page"
-import { ActivityList } from "../activities/-components/ActivityList"
+import {
+  ActivityList,
+  ActivityListControls,
+} from "../activities/-components/ActivityList"
 import { AreaCrumb } from "./-components/AreaCrumb"
 
 export const Route = createFileRoute(
@@ -58,7 +61,16 @@ function AreaPage() {
           <span className="text-xs text-muted-foreground max-md:hidden">
             Press <Kbd>C</Kbd>
           </span>
-          <Button onClick={() => openNewActivity({ areaId, goalId: null })}>
+          <Button
+            onClick={() =>
+              openNewActivity({
+                areaId,
+                goalId: null,
+                typeId: null,
+                parent: null,
+              })
+            }
+          >
             <Plus data-icon="inline-start" />
             New activity
           </Button>
@@ -87,12 +99,16 @@ function AreaPage() {
                 </EmptyState.Text>
               </EmptyState.Root>
             ) : (
-              <ActivityList
-                activities={activities}
-                areas={areas}
-                workspaceId={workspace.id}
-                workspaceSlug={workspace.slug}
-              />
+              <section aria-label="Activities" className="flex flex-col gap-3">
+                <ActivityListControls />
+                <ActivityList
+                  activities={activities}
+                  areas={areas}
+                  workspaceId={workspace.id}
+                  workspaceSlug={workspace.slug}
+                  timezone={workspace.settings.timezone}
+                />
+              </section>
             )}
           </Page.Content>
         </Page.ScrollArea>

@@ -3,6 +3,7 @@ import { ActivitiesRepository } from "./activities"
 import { ActivityTypesRepository } from "./activity-types"
 import { AreasRepository } from "./areas"
 import { getLocalDb } from "./db"
+import { TimeEntriesRepository } from "./time-entries"
 
 const activitiesRepository = (workspaceId: string) =>
   new ActivitiesRepository(getLocalDb(), { workspaceId })
@@ -12,6 +13,9 @@ const areasRepository = (workspaceId: string) =>
 
 const activityTypesRepository = (workspaceId: string) =>
   new ActivityTypesRepository(getLocalDb(), { workspaceId })
+
+const timeEntriesRepository = (workspaceId: string) =>
+  new TimeEntriesRepository(getLocalDb(), { workspaceId })
 
 const activityKeys = {
   all: (workspaceId: string) =>
@@ -28,6 +32,12 @@ const activityKeys = {
     [...activityKeys.all(workspaceId), "types"] as const,
   type: (workspaceId: string, id: string) =>
     [...activityKeys.types(workspaceId), id] as const,
+  children: (workspaceId: string, parentId: string) =>
+    [...activityKeys.all(workspaceId), "children", parentId] as const,
+  parentCandidates: (workspaceId: string, id: string) =>
+    [...activityKeys.all(workspaceId), "parent-candidates", id] as const,
+  timeEntries: (workspaceId: string, activityId: string) =>
+    [...activityKeys.all(workspaceId), "time-entries", activityId] as const,
 }
 
 type WorkspaceRef = {
@@ -119,6 +129,30 @@ const activityTypeQuery = (workspaceId: string, id: string) =>
     staleTime: 0,
   })
 
+const subActivitiesQuery = (workspaceId: string, parentId: string) =>
+  queryOptions({
+    queryKey: activityKeys.children(workspaceId, parentId),
+    queryFn: () => activitiesRepository(workspaceId).subActivities(parentId),
+    networkMode: "always",
+    staleTime: 0,
+  })
+
+const parentCandidatesQuery = (workspaceId: string, id: string) =>
+  queryOptions({
+    queryKey: activityKeys.parentCandidates(workspaceId, id),
+    queryFn: () => activitiesRepository(workspaceId).parentCandidates(id),
+    networkMode: "always",
+    staleTime: 0,
+  })
+
+const timeEntriesQuery = (workspaceId: string, activityId: string) =>
+  queryOptions({
+    queryKey: activityKeys.timeEntries(workspaceId, activityId),
+    queryFn: () => timeEntriesRepository(workspaceId).list(activityId),
+    networkMode: "always",
+    staleTime: 0,
+  })
+
 export {
   activitiesRepository,
   activityTypeQuery,
@@ -130,5 +164,9 @@ export {
   activitySummaryQuery,
   areasQuery,
   areasRepository,
+  parentCandidatesQuery,
+  subActivitiesQuery,
+  timeEntriesQuery,
+  timeEntriesRepository,
 }
 export type { WorkspaceRef }

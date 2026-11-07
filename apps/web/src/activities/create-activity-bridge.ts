@@ -15,6 +15,7 @@ type ActivityBridgeOptions = {
   workspace: WorkspaceRef
   origin: (blockId: string | null) => ActivityOrigin | null
   goalId?: string | null
+  parentId?: string | null
   areaId: () => Promise<string>
   open: (activityId: string) => void
 }
@@ -60,6 +61,7 @@ const createActivityBridge = (
             id: draft.activityId,
             areaId,
             goalId: options.goalId ?? null,
+            parentId: options.parentId ?? null,
             title: draft.title,
             status: draft.status,
             origin: options.origin(draft.blockId),

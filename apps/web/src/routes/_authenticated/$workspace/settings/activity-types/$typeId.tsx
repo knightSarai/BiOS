@@ -1,7 +1,9 @@
 import { useSuspenseQuery } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import { ColorPicker } from "@/activities/components/ColorPicker"
+import { TimerConfigEditor } from "@/activities/components/TimerConfigEditor"
 import { TypeIcon } from "@/activities/components/TypeIcon"
+import { DEFAULT_TIMER } from "@/activities/timer"
 import { NotFound } from "@/components/common/NotFound"
 import { useUpdateActivityType } from "@/local-db/activity-type-mutations"
 import { activityTypeQuery } from "@/local-db/activity-queries"
@@ -75,6 +77,17 @@ function ActivityTypePage() {
           fields={fields}
           activityCount={activityCount}
           workspaceId={workspace.id}
+        />
+      </SettingsSection>
+      <SettingsSection
+        title="Timer"
+        description="Every activity of this type starts with this timer. An activity can change its own."
+      >
+        <TimerConfigEditor
+          config={type.timer ?? DEFAULT_TIMER}
+          onChange={(timer) =>
+            updateType.mutate({ id: type.id, changes: { timer } })
+          }
         />
       </SettingsSection>
       <SettingsSection

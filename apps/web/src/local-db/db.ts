@@ -6,6 +6,7 @@ import type { StatusNames, TypeColor } from "@/activities/activity-types"
 import type { AreaColor } from "@/activities/areas"
 import type { FieldKind, FieldOption, FieldValues } from "@/activities/fields"
 import type { ActivityStatus } from "@/activities/status"
+import type { TimerConfig } from "@/activities/timer"
 import type { GoalStatus } from "@/goals/status"
 import type { OwnerKey } from "@/notebook/owners"
 import { keyBetween, keysAfter } from "@/notebook/sort-keys"
@@ -80,6 +81,7 @@ type ActivityRow = {
   workspaceId: string
   areaId: string
   goalId: string | null
+  parentId: string | null
   typeId: string | null
   fields: FieldValues
   dueDate: string | null
@@ -88,10 +90,20 @@ type ActivityRow = {
   status: ActivityStatus
   reopenStatus: ActivityStatus
   origin: ActivityOrigin | null
+  timer: TimerConfig | null
   createdAt: UtcDatetime
   updatedAt: UtcDatetime
   completedAt: UtcDatetime | null
   content: Y.Doc
+}
+
+type TimeEntryRow = {
+  id: string
+  workspaceId: string
+  activityId: string
+  startedAt: UtcDatetime
+  endedAt: UtcDatetime | null
+  endsLap: boolean
 }
 
 type ActivityTypeRow = {
@@ -101,6 +113,7 @@ type ActivityTypeRow = {
   color: TypeColor
   icon: string | null
   statusNames: StatusNames
+  timer: TimerConfig | null
   createdAt: UtcDatetime
   updatedAt: UtcDatetime
 }
@@ -139,6 +152,7 @@ type LocalDb = Dexie & {
   activityTypes: EntityTable<ActivityTypeRow, "id">
   activityTypeFields: EntityTable<ActivityTypeFieldRow, "id">
   goals: EntityTable<GoalRow, "id">
+  timeEntries: EntityTable<TimeEntryRow, "id">
 }
 
 const createLocalDb = (name: string): LocalDb => {
@@ -271,6 +285,41 @@ const createLocalDb = (name: string): LocalDb => {
           delete row.journalKey
         })
     })
+  db.version(9)
+    .stores({
+      timeEntries: "id, [workspaceId+activityId], [workspaceId+startedAt]",
+    })
+    .upgrade(async (tx) => {
+      await tx
+        .table<ActivityRow, string>("activities")
+        .toCollection()
+        .modify({ timer: null })
+      await tx
+        .table<ActivityTypeRow, string>("activityTypes")
+        .toCollection()
+        .modify({ timer: null })
+    })
+  db.version(10)
+    .stores({
+      activities:
+        "id, workspaceId, areaId, goalId, typeId, parentId, [areaId+number], [workspaceId+updatedAt], content: Y.Doc",
+    })
+    .upgrade(async (tx) => {
+      // Until now a sub-activity was one written in its parent's body. A parent
+      // deleted since then, or in another workspace, leaves it without one.
+      const activities = tx.table<ActivityRow, string>("activities")
+      const workspaceOf = new Map(
+        (await activities.toArray()).map((row) => [row.id, row.workspaceId])
+      )
+      await activities.toCollection().modify((row) => {
+        const parentId =
+          row.origin?.kind === "activity" ? row.origin.activityId : null
+        row.parentId =
+          parentId !== null && workspaceOf.get(parentId) === row.workspaceId
+            ? parentId
+            : null
+      })
+    })
   return db
 }
 
@@ -297,4 +346,5 @@ export type {
   MentionRow,
   MentionSourceKey,
   MentionTargetKey,
+  TimeEntryRow,
 }

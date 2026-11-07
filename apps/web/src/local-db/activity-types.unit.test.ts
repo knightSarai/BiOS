@@ -447,3 +447,113 @@ describe("upgrading from version 5", () => {
     })
   })
 })
+
+describe("timers on types", () => {
+  it("stores a valid timer, rejects an invalid one, and clears it", async () => {
+    const { types } = await setup()
+    const boxing = await types.create({ name: "Boxing", color: "chart-2" })
+    expect(boxing.timer).toBeNull()
+
+    const rounds = {
+      mode: "intervals" as const,
+      workSeconds: 180,
+      restSeconds: 60,
+      rounds: 3,
+      sound: "bell" as const,
+    }
+    await types.update(boxing.id, { timer: rounds })
+    expect((await types.byId(boxing.id))?.timer).toEqual(rounds)
+
+    await expect(
+      types.update(boxing.id, { timer: { ...rounds, rounds: 0 } })
+    ).rejects.toThrow()
+    await types.update(boxing.id, { timer: null })
+    expect((await types.byId(boxing.id))?.timer).toBeNull()
+  })
+})
+
+describe("upgrading from version 8", () => {
+  it("gives existing types and activities no timer of their own", async () => {
+    const name = `activities-upgrade-9-${crypto.randomUUID()}`
+    const old = new Dexie(name, { addons: [yDexie] })
+    old.version(8).stores({
+      activities:
+        "id, workspaceId, areaId, goalId, typeId, [areaId+number], [workspaceId+updatedAt], content: Y.Doc",
+      activityTypes: "id, workspaceId",
+    })
+    await old.table("activities").add({
+      id: "a1",
+      workspaceId: "ws-1",
+      areaId: "x",
+      title: "Run",
+      updatedAt: "2026-10-01T00:00:00.000Z",
+    })
+    await old.table("activityTypes").add({
+      id: "t1",
+      workspaceId: "ws-1",
+      name: "Workout",
+    })
+    old.close()
+
+    const db = createLocalDb(name)
+    openDbs.push(db)
+    expect(await db.activities.get("a1")).toMatchObject({ timer: null })
+    expect(await db.activityTypes.get("t1")).toMatchObject({ timer: null })
+    expect(await db.timeEntries.count()).toBe(0)
+  })
+})
+
+describe("upgrading from version 9", () => {
+  it("makes activities written in another activity its sub-activities", async () => {
+    const name = `activities-upgrade-10-${crypto.randomUUID()}`
+    const old = new Dexie(name, { addons: [yDexie] })
+    old.version(9).stores({
+      activities:
+        "id, workspaceId, areaId, goalId, typeId, [areaId+number], [workspaceId+updatedAt], content: Y.Doc",
+    })
+    await old.table("activities").bulkAdd([
+      {
+        id: "child",
+        workspaceId: "ws-1",
+        updatedAt: "2026-10-01T00:00:00.000Z",
+        origin: { kind: "activity", activityId: "parent", blockId: "b1" },
+      },
+      {
+        id: "from-doc",
+        workspaceId: "ws-1",
+        updatedAt: "2026-10-01T00:00:00.000Z",
+        origin: { kind: "document", documentId: "d1", blockId: null },
+      },
+      {
+        id: "orphan",
+        workspaceId: "ws-1",
+        updatedAt: "2026-10-01T00:00:00.000Z",
+        origin: { kind: "activity", activityId: "deleted", blockId: null },
+      },
+      {
+        id: "parent",
+        workspaceId: "ws-1",
+        updatedAt: "2026-10-01T00:00:00.000Z",
+        origin: null,
+      },
+      {
+        id: "loose",
+        workspaceId: "ws-1",
+        updatedAt: "2026-10-01T00:00:00.000Z",
+        origin: null,
+      },
+    ])
+    old.close()
+
+    const db = createLocalDb(name)
+    openDbs.push(db)
+    expect(await db.activities.get("child")).toMatchObject({
+      parentId: "parent",
+    })
+    expect(await db.activities.get("from-doc")).toMatchObject({
+      parentId: null,
+    })
+    expect(await db.activities.get("loose")).toMatchObject({ parentId: null })
+    expect(await db.activities.get("orphan")).toMatchObject({ parentId: null })
+  })
+})

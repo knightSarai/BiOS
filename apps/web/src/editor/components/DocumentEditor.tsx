@@ -10,7 +10,7 @@ import type { ActivityBridge } from "../activity-bridge"
 import type { MentionBridge } from "../mention-bridge"
 import type { EditorContent } from "../mention-index"
 import { activeLinkHref, isInTitle } from "../commands"
-import { mountEditor } from "../mount-editor"
+import { mountEditor, type EditorHeight } from "../mount-editor"
 import { DocumentOutline } from "./DocumentOutline"
 import { createEditorAtoms } from "./editor-atoms"
 import { MentionMenu } from "./MentionMenu"
@@ -28,6 +28,7 @@ type DocumentEditorProps = {
   activities: ActivityBridge
   mentions?: MentionBridge
   titleAccessory?: React.ReactNode
+  height: EditorHeight
 }
 
 function DocumentEditor({
@@ -39,6 +40,7 @@ function DocumentEditor({
   activities,
   mentions,
   titleAccessory,
+  height,
 }: DocumentEditorProps) {
   const store = useStore()
   const slashMenuId = useId()
@@ -67,6 +69,7 @@ function DocumentEditor({
         onLoaded,
         activities,
         mentions,
+        height,
         onError: (message) => toast.error(message),
         onOpenDrawing: (drawingId) => {
           store.get(atoms.drawingEditor)?.destroy()
@@ -101,6 +104,7 @@ function DocumentEditor({
       onLoaded,
       activities,
       mentions,
+      height,
       store,
       atoms,
     ]

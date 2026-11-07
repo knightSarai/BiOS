@@ -47,6 +47,7 @@ const useActivityBridge = (
           return null
         },
         goalId: source.kind === "goal" ? sourceId : null,
+        parentId: source.kind === "activity" ? sourceId : null,
         areaId: async () => {
           if (source.kind === "activity") {
             const parent = await activitiesRepository(workspace.id).byId(

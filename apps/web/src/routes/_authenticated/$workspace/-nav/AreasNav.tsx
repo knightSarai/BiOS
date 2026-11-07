@@ -18,10 +18,8 @@ function AreaLinks({ workspace, onNavigate }: AreasNavProps) {
   return areas?.map((area) => (
     <Link
       key={area.id}
-      to="/$workspace/activities"
-      params={{ workspace: workspace.slug }}
-      search={{ area: area.id }}
-      activeOptions={{ includeSearch: true }}
+      to="/$workspace/areas/$areaId"
+      params={{ workspace: workspace.slug, areaId: area.id }}
       onClick={onNavigate}
       className={navRowClassName}
     >

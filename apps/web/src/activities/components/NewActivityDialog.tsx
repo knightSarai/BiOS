@@ -1,7 +1,7 @@
 import { Suspense, useRef } from "react"
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query"
 import { useHotkey } from "@tanstack/react-hotkeys"
-import { Link, useNavigate, useSearch } from "@tanstack/react-router"
+import { Link, useNavigate, useParams } from "@tanstack/react-router"
 import { atom, useAtom } from "jotai"
 import {
   CalendarDays,
@@ -561,8 +561,8 @@ function NewActivityForm({
 
 function NewActivityDialog({ workspace }: { workspace: NewActivityWorkspace }) {
   const [{ open, request }, setDialog] = useAtom(newActivityAtom)
-  const activitiesSearch = useSearch({
-    from: "/_authenticated/$workspace/_app/activities/",
+  const areaParams = useParams({
+    from: "/_authenticated/$workspace/_app/areas/$areaId",
     shouldThrow: false,
   })
   useHotkey(
@@ -573,7 +573,7 @@ function NewActivityDialog({ workspace }: { workspace: NewActivityWorkspace }) {
         return
       setDialog({
         open: true,
-        request: { areaId: activitiesSearch?.area ?? null, goalId: null },
+        request: { areaId: areaParams?.areaId ?? null, goalId: null },
       })
     },
     { enabled: !open }

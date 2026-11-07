@@ -43,6 +43,7 @@ import { Route as AuthenticatedAdminWorkspacesIndexRouteImport } from './routes/
 import { Route as AuthenticatedAdminWorkspacesNewRouteImport } from './routes/_authenticated/admin/workspaces/new'
 import { Route as AuthenticatedWorkspaceAppActivitiesIndexRouteImport } from './routes/_authenticated/$workspace/_app/activities/index'
 import { Route as AuthenticatedWorkspaceAppActivitiesActivityIdRouteImport } from './routes/_authenticated/$workspace/_app/activities/$activityId'
+import { Route as AuthenticatedWorkspaceAppAreasAreaIdRouteImport } from './routes/_authenticated/$workspace/_app/areas/$areaId'
 import { Route as AuthenticatedWorkspaceAppDocumentsIndexRouteImport } from './routes/_authenticated/$workspace/_app/documents/index'
 import { Route as AuthenticatedWorkspaceAppDocumentsDocumentIdRouteImport } from './routes/_authenticated/$workspace/_app/documents/$documentId'
 import { Route as AuthenticatedWorkspaceAppGoalsIndexRouteImport } from './routes/_authenticated/$workspace/_app/goals/index'
@@ -243,6 +244,12 @@ const AuthenticatedWorkspaceAppActivitiesActivityIdRoute =
     path: '/$activityId',
     getParentRoute: () => AuthenticatedWorkspaceAppActivitiesRouteRoute,
   } as any)
+const AuthenticatedWorkspaceAppAreasAreaIdRoute =
+  AuthenticatedWorkspaceAppAreasAreaIdRouteImport.update({
+    id: '/areas/$areaId',
+    path: '/areas/$areaId',
+    getParentRoute: () => AuthenticatedWorkspaceAppRouteRoute,
+  } as any)
 const AuthenticatedWorkspaceAppDocumentsIndexRoute =
   AuthenticatedWorkspaceAppDocumentsIndexRouteImport.update({
     id: '/',
@@ -324,6 +331,7 @@ export interface FileRoutesByFullPath {
   '/admin/users/': typeof AuthenticatedAdminUsersIndexRoute
   '/admin/workspaces/': typeof AuthenticatedAdminWorkspacesIndexRoute
   '/$workspace/activities/$activityId': typeof AuthenticatedWorkspaceAppActivitiesActivityIdRoute
+  '/$workspace/areas/$areaId': typeof AuthenticatedWorkspaceAppAreasAreaIdRoute
   '/$workspace/documents/$documentId': typeof AuthenticatedWorkspaceAppDocumentsDocumentIdRoute
   '/$workspace/goals/$goalId': typeof AuthenticatedWorkspaceAppGoalsGoalIdRoute
   '/$workspace/settings/activity-types/$typeId': typeof AuthenticatedWorkspaceSettingsActivityTypesTypeIdRoute
@@ -356,6 +364,7 @@ export interface FileRoutesByTo {
   '/admin/users': typeof AuthenticatedAdminUsersIndexRoute
   '/admin/workspaces': typeof AuthenticatedAdminWorkspacesIndexRoute
   '/$workspace/activities/$activityId': typeof AuthenticatedWorkspaceAppActivitiesActivityIdRoute
+  '/$workspace/areas/$areaId': typeof AuthenticatedWorkspaceAppAreasAreaIdRoute
   '/$workspace/documents/$documentId': typeof AuthenticatedWorkspaceAppDocumentsDocumentIdRoute
   '/$workspace/goals/$goalId': typeof AuthenticatedWorkspaceAppGoalsGoalIdRoute
   '/$workspace/settings/activity-types/$typeId': typeof AuthenticatedWorkspaceSettingsActivityTypesTypeIdRoute
@@ -401,6 +410,7 @@ export interface FileRoutesById {
   '/_authenticated/admin/users/': typeof AuthenticatedAdminUsersIndexRoute
   '/_authenticated/admin/workspaces/': typeof AuthenticatedAdminWorkspacesIndexRoute
   '/_authenticated/$workspace/_app/activities/$activityId': typeof AuthenticatedWorkspaceAppActivitiesActivityIdRoute
+  '/_authenticated/$workspace/_app/areas/$areaId': typeof AuthenticatedWorkspaceAppAreasAreaIdRoute
   '/_authenticated/$workspace/_app/documents/$documentId': typeof AuthenticatedWorkspaceAppDocumentsDocumentIdRoute
   '/_authenticated/$workspace/_app/goals/$goalId': typeof AuthenticatedWorkspaceAppGoalsGoalIdRoute
   '/_authenticated/$workspace/settings/activity-types/$typeId': typeof AuthenticatedWorkspaceSettingsActivityTypesTypeIdRoute
@@ -445,6 +455,7 @@ export interface FileRouteTypes {
     | '/admin/users/'
     | '/admin/workspaces/'
     | '/$workspace/activities/$activityId'
+    | '/$workspace/areas/$areaId'
     | '/$workspace/documents/$documentId'
     | '/$workspace/goals/$goalId'
     | '/$workspace/settings/activity-types/$typeId'
@@ -477,6 +488,7 @@ export interface FileRouteTypes {
     | '/admin/users'
     | '/admin/workspaces'
     | '/$workspace/activities/$activityId'
+    | '/$workspace/areas/$areaId'
     | '/$workspace/documents/$documentId'
     | '/$workspace/goals/$goalId'
     | '/$workspace/settings/activity-types/$typeId'
@@ -521,6 +533,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/users/'
     | '/_authenticated/admin/workspaces/'
     | '/_authenticated/$workspace/_app/activities/$activityId'
+    | '/_authenticated/$workspace/_app/areas/$areaId'
     | '/_authenticated/$workspace/_app/documents/$documentId'
     | '/_authenticated/$workspace/_app/goals/$goalId'
     | '/_authenticated/$workspace/settings/activity-types/$typeId'
@@ -783,6 +796,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedWorkspaceAppActivitiesActivityIdRouteImport
       parentRoute: typeof AuthenticatedWorkspaceAppActivitiesRouteRoute
     }
+    '/_authenticated/$workspace/_app/areas/$areaId': {
+      id: '/_authenticated/$workspace/_app/areas/$areaId'
+      path: '/areas/$areaId'
+      fullPath: '/$workspace/areas/$areaId'
+      preLoaderRoute: typeof AuthenticatedWorkspaceAppAreasAreaIdRouteImport
+      parentRoute: typeof AuthenticatedWorkspaceAppRouteRoute
+    }
     '/_authenticated/$workspace/_app/documents/': {
       id: '/_authenticated/$workspace/_app/documents/'
       path: '/'
@@ -922,6 +942,7 @@ interface AuthenticatedWorkspaceAppRouteRouteChildren {
   AuthenticatedWorkspaceAppSplatRoute: typeof AuthenticatedWorkspaceAppSplatRoute
   AuthenticatedWorkspaceAppTodayRoute: typeof AuthenticatedWorkspaceAppTodayRoute
   AuthenticatedWorkspaceAppIndexRoute: typeof AuthenticatedWorkspaceAppIndexRoute
+  AuthenticatedWorkspaceAppAreasAreaIdRoute: typeof AuthenticatedWorkspaceAppAreasAreaIdRoute
 }
 
 const AuthenticatedWorkspaceAppRouteRouteChildren: AuthenticatedWorkspaceAppRouteRouteChildren =
@@ -937,6 +958,8 @@ const AuthenticatedWorkspaceAppRouteRouteChildren: AuthenticatedWorkspaceAppRout
     AuthenticatedWorkspaceAppSplatRoute: AuthenticatedWorkspaceAppSplatRoute,
     AuthenticatedWorkspaceAppTodayRoute: AuthenticatedWorkspaceAppTodayRoute,
     AuthenticatedWorkspaceAppIndexRoute: AuthenticatedWorkspaceAppIndexRoute,
+    AuthenticatedWorkspaceAppAreasAreaIdRoute:
+      AuthenticatedWorkspaceAppAreasAreaIdRoute,
   }
 
 const AuthenticatedWorkspaceAppRouteRouteWithChildren =

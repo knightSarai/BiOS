@@ -3,13 +3,12 @@ import { createFileRoute, Link } from "@tanstack/react-router"
 import { useSetAtom } from "jotai"
 import { CircleDashed, Plus } from "lucide-react"
 import { z } from "zod"
-import { areaDotClassNames } from "@/activities/areas"
+import { ColorDot } from "@/activities/components/ColorDot"
 import { openNewActivityAtom } from "@/activities/new-activity"
 import { Button } from "@/components/ui/button"
 import { Kbd } from "@/components/ui/kbd"
 import { EmptyState } from "@/components/common/EmptyState"
 import { activityListQuery, areasQuery } from "@/local-db/activity-queries"
-import { cn } from "@/lib/utils"
 import { EntityDocuments } from "@/notebook/components/EntityDocuments"
 import { Page } from "@layout/content/Page"
 import { ActivityList } from "./-components/ActivityList"
@@ -87,12 +86,7 @@ function ActivitiesPage() {
                   activeOptions={{ includeSearch: true }}
                   className={chipClassName}
                 >
-                  <span
-                    className={cn(
-                      "size-2 rounded-full",
-                      areaDotClassNames[area.color]
-                    )}
-                  />
+                  <ColorDot color={area.color} className="size-2" />
                   {area.name}
                 </Link>
               ))}

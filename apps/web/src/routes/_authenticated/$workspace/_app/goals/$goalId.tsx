@@ -6,9 +6,9 @@ import {
   useLocation,
   useRouter,
 } from "@tanstack/react-router"
+import { ColorDot } from "@/activities/components/ColorDot"
 import { StatusIcon } from "@/activities/components/StatusIcon"
 import { useActivityBridge } from "@/activities/use-activity-bridge"
-import { areaDotClassNames } from "@/activities/areas"
 import { NotFound } from "@/components/common/NotFound"
 import { DocumentEditor } from "@/editor/components/DocumentEditor"
 import { useSaveGoalContent, useSyncGoalTitle } from "@/local-db/goal-mutations"
@@ -17,7 +17,6 @@ import {
   goalQuery,
   goalsRepository,
 } from "@/local-db/goal-queries"
-import { cn } from "@/lib/utils"
 import { EntityDocuments } from "@/notebook/components/EntityDocuments"
 import { PageIconButton } from "@/notebook/components/PageIconButton"
 import { useMentionBridge } from "@/notebook/components/use-mention-bridge"
@@ -124,12 +123,7 @@ function GoalPage() {
               groups.map((group) => (
                 <div key={group.area.id} className="flex flex-col">
                   <div className="flex min-h-8 items-center gap-2 rounded-md bg-muted px-2.5 text-xs text-muted-foreground">
-                    <span
-                      className={cn(
-                        "size-2 rounded-full",
-                        areaDotClassNames[group.area.color]
-                      )}
-                    />
+                    <ColorDot color={group.area.color} className="size-2" />
                     <span className="font-medium text-foreground">
                       {group.area.name}
                     </span>

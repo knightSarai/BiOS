@@ -3,7 +3,13 @@ import { useQuery, useSuspenseQuery } from "@tanstack/react-query"
 import { useHotkey } from "@tanstack/react-hotkeys"
 import { Link, useNavigate, useSearch } from "@tanstack/react-router"
 import { atom, useAtom } from "jotai"
-import { CalendarDays, ChevronRight, Target, XIcon } from "lucide-react"
+import {
+  CalendarDays,
+  ChevronRight,
+  Settings,
+  Target,
+  XIcon,
+} from "lucide-react"
 import { toast } from "sonner"
 import { z } from "zod"
 import { formatDayLabel } from "@knight-os/server/core"
@@ -17,6 +23,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Field, FieldLabel } from "@/components/ui/field"
+import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { GoalIcon } from "@/goals/components/GoalIcon"
@@ -25,16 +32,16 @@ import { useCreateActivities } from "@/local-db/activity-mutations"
 import { activityTypesQuery, areasQuery } from "@/local-db/activity-queries"
 import { goalListQuery } from "@/local-db/goal-queries"
 import { cn } from "@/lib/utils"
-import { areaDotClassNames } from "../areas"
 import {
   createMoreAtom,
   newActivityAtom,
   type NewActivityRequest,
 } from "../new-activity"
 import { statusName } from "../activity-types"
-import type { FieldValue } from "../fields"
+import { invalidFields, type FieldValue } from "../fields"
 import { ACTIVITY_STATUSES } from "../status"
 import { AreaMenu } from "./AreaMenu"
+import { ColorDot } from "./ColorDot"
 import { DueDateMenu } from "./DueDateMenu"
 import { FieldInput } from "./FieldInput"
 import { GoalMenu } from "./GoalMenu"
@@ -121,6 +128,15 @@ function NewActivityForm({
         const typed = typeStillExists
           ? value
           : { ...value, typeId: null, fields: noFieldValues }
+        const typeFields =
+          types?.find((candidate) => candidate.id === typed.typeId)?.fields ??
+          []
+        const invalid = invalidFields(typeFields, typed.fields)
+        if (invalid.length > 0) {
+          return {
+            form: `Fix ${invalid.map((field) => field.name).join(", ")} before creating the activity.`,
+          }
+        }
         try {
           const [created] = await createActivities.mutateAsync([
             { id: crypto.randomUUID(), origin: null, ...typed },
@@ -174,12 +190,7 @@ function NewActivityForm({
                 const area = areas.find((candidate) => candidate.id === areaId)
                 return area ? (
                   <span className="flex h-6 items-center gap-1.5 rounded-md bg-muted px-2 text-foreground">
-                    <span
-                      className={cn(
-                        "size-2 rounded-full",
-                        areaDotClassNames[area.color]
-                      )}
-                    />
+                    <ColorDot color={area.color} className="size-2" />
                     {area.key}
                   </span>
                 ) : null
@@ -340,14 +351,10 @@ function NewActivityForm({
                       className={cn(chipClassName, !area && emptyChipClassName)}
                       aria-label={`Area: ${area?.name ?? "None"}`}
                     >
-                      <span
+                      <ColorDot
                         data-icon="inline-start"
-                        className={cn(
-                          "size-2 rounded-full",
-                          area
-                            ? areaDotClassNames[area.color]
-                            : "bg-muted-foreground"
-                        )}
+                        color={area?.color ?? null}
+                        className="size-2"
                       />
                       {area?.name ?? "Area"}
                     </Button>
@@ -419,13 +426,13 @@ function NewActivityForm({
             const type = types?.find((candidate) => candidate.id === typeId)
             if (!type) return null
             return (
-              <div className="mx-5 mb-4 flex flex-col gap-3 rounded-lg border p-3">
-                <div className="flex items-center justify-between gap-2">
+              <div className="mx-5 mb-3 flex flex-col">
+                <div className="flex items-center gap-2">
                   <button
                     type="button"
                     aria-expanded={fieldsOpen}
                     onClick={() => setFieldsOpen(!fieldsOpen)}
-                    className="flex min-h-7 items-center gap-1.5 text-xs font-semibold text-muted-foreground max-md:min-h-11"
+                    className="flex min-h-7 min-w-0 items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground max-md:min-h-11"
                   >
                     <ChevronRight
                       aria-hidden
@@ -434,9 +441,10 @@ function NewActivityForm({
                         fieldsOpen && "rotate-90"
                       )}
                     />
-                    {type.name} fields
+                    <span className="text-left">{type.name}</span>
+                    <span className="sr-only"> fields</span>
                     {fieldsOpen ? null : (
-                      <span className="font-normal">
+                      <span className="shrink-0 font-normal">
                         ·{" "}
                         {type.fields.length === 1
                           ? "1 field"
@@ -444,25 +452,33 @@ function NewActivityForm({
                       </span>
                     )}
                   </button>
+                  <Separator aria-hidden className="min-w-4 flex-1" />
                   <Link
                     to="/$workspace/settings/activity-types/$typeId"
                     params={{ workspace: workspace.slug, typeId: type.id }}
-                    className="flex min-h-7 items-center text-xs text-accent-text hover:underline max-md:min-h-11"
+                    aria-label={`Edit ${type.name} fields in Settings`}
+                    title="Edit in Settings"
+                    className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground max-md:size-11"
                   >
-                    {type.fields.length === 0
-                      ? "Add fields in Settings"
-                      : "Edit in Settings"}
+                    <Settings aria-hidden className="size-3.5" />
                   </Link>
                 </div>
                 {fieldsOpen && type.fields.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">
-                    {type.name} has no fields yet.
+                  <p className="pt-1 text-xs text-muted-foreground">
+                    {type.name} has no fields yet.{" "}
+                    <Link
+                      to="/$workspace/settings/activity-types/$typeId"
+                      params={{ workspace: workspace.slug, typeId: type.id }}
+                      className="text-accent-text hover:underline"
+                    >
+                      Add fields in Settings
+                    </Link>
                   </p>
                 ) : null}
                 {fieldsOpen && type.fields.length > 0 ? (
                   <form.Field name="fields">
                     {(field) => (
-                      <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="mt-1 flex flex-col">
                         {type.fields.map((definition) => (
                           <FieldInput
                             key={definition.id}
@@ -472,6 +488,7 @@ function NewActivityForm({
                                 FieldValue | undefined
                             }
                             timezone={workspace.timezone}
+                            layout="row"
                             onChange={(next) => {
                               const rest = Object.fromEntries(
                                 Object.entries(field.state.value).filter(

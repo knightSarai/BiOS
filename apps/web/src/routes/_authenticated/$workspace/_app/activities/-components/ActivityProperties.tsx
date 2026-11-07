@@ -7,8 +7,9 @@ import {
   now,
   parseUtc,
 } from "@knight-os/server/core"
-import { activityKey, areaDotClassNames } from "@/activities/areas"
+import { activityKey } from "@/activities/areas"
 import { AreaMenu } from "@/activities/components/AreaMenu"
+import { ColorDot } from "@/activities/components/ColorDot"
 import { DueDateMenu } from "@/activities/components/DueDateMenu"
 import { GoalMenu } from "@/activities/components/GoalMenu"
 import { StatusIcon } from "@/activities/components/StatusIcon"
@@ -174,12 +175,7 @@ function AreaControl({ activity, workspace, className }: PropertyControlProps) {
           aria-label={`Area: ${label}`}
           className={className}
         >
-          <span
-            className={cn(
-              "size-2 shrink-0 rounded-full",
-              area ? areaDotClassNames[area.color] : "bg-muted-foreground"
-            )}
-          />
+          <ColorDot color={area?.color ?? null} className="size-2 shrink-0" />
           <span className="flex-1 truncate">{label}</span>
           <ChevronDown className="size-3.5 text-muted-foreground" />
         </button>

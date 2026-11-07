@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   InvalidFieldValueError,
   formatFieldValue,
+  invalidFields,
   keepValidValues,
   parseFieldValues,
   setFieldValue,
@@ -75,6 +76,25 @@ describe("parseFieldValues", () => {
         stray: "ignored",
       })
     ).toEqual({ author: "Ichiro Kishimi" })
+  })
+})
+
+describe("invalidFields", () => {
+  it("lists only the fields whose filled-in value doesn't fit their kind", () => {
+    expect(
+      invalidFields([author, pages, link, rating], {
+        author: "Ursula",
+        pages: "12a",
+        link: "bookshop.org",
+        rating: 4,
+      })
+    ).toEqual([pages, link])
+  })
+
+  it("treats unset values as valid", () => {
+    expect(
+      invalidFields([pages, link], { pages: null, link: undefined })
+    ).toEqual([])
   })
 })
 

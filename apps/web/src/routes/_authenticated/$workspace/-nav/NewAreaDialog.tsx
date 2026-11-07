@@ -2,12 +2,12 @@ import { useAtom } from "jotai"
 import { toast } from "sonner"
 import { z } from "zod"
 import {
-  AREA_COLORS,
   AREA_KEY_PATTERN,
-  areaColorNames,
   areaKeyFromName,
+  colorSchema,
   type AreaColor,
 } from "@/activities/areas"
+import { ColorPicker } from "@/activities/components/ColorPicker"
 import { Form } from "@/components/forms/Form"
 import {
   Dialog,
@@ -16,7 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { FieldGroup } from "@/components/ui/field"
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { useAppForm } from "@/hooks/form"
 import { useCreateArea } from "@/local-db/activity-mutations"
 import { newAreaDialogOpenAtom } from "./atoms"
@@ -28,7 +28,7 @@ const newAreaSchema = z.object({
     .trim()
     .toUpperCase()
     .regex(AREA_KEY_PATTERN, "Use 2 to 5 letters, like HLT."),
-  color: z.enum(AREA_COLORS),
+  color: colorSchema,
 })
 
 type NewAreaDialogProps = {
@@ -111,13 +111,13 @@ function NewAreaDialog({ workspaceId }: NewAreaDialogProps) {
             </form.AppField>
             <form.AppField name="color">
               {(field) => (
-                <field.ToggleGroupField
-                  label="Color"
-                  options={AREA_COLORS.map((color) => ({
-                    value: color,
-                    label: areaColorNames[color],
-                  }))}
-                />
+                <Field>
+                  <FieldLabel>Colour</FieldLabel>
+                  <ColorPicker
+                    value={field.state.value}
+                    onChange={field.handleChange}
+                  />
+                </Field>
               )}
             </form.AppField>
             <form.AppForm>

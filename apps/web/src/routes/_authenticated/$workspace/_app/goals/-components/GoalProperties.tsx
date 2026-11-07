@@ -1,5 +1,6 @@
 import { ChevronDown } from "lucide-react"
-import { areaDotClassNames, type AreaColor } from "@/activities/areas"
+import type { AreaColor } from "@/activities/areas"
+import { ColorDot } from "@/activities/components/ColorDot"
 import type { ActivityStatus } from "@/activities/status"
 import {
   DropdownMenu,
@@ -103,12 +104,7 @@ function GoalProperties({
                 key={group.area.id}
                 className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2 py-0.5 text-xs"
               >
-                <span
-                  className={cn(
-                    "size-1.5 rounded-full",
-                    areaDotClassNames[group.area.color]
-                  )}
-                />
+                <ColorDot color={group.area.color} className="size-1.5" />
                 {group.area.name}
               </span>
             ))}

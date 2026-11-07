@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router"
-import { activityKey, areaDotClassNames } from "@/activities/areas"
+import { activityKey } from "@/activities/areas"
+import { ColorDot } from "@/activities/components/ColorDot"
 import { StatusIcon } from "@/activities/components/StatusIcon"
 import { StatusMenu } from "@/activities/components/StatusMenu"
 import { statusLabels, type ActivityStatus } from "@/activities/status"
@@ -92,12 +93,10 @@ function ActivityList({
                       {activity.title || "Untitled"}
                     </span>
                     {area ? (
-                      <span
+                      <ColorDot
                         title={area.name}
-                        className={cn(
-                          "size-2 shrink-0 rounded-full",
-                          areaDotClassNames[area.color]
-                        )}
+                        color={area.color}
+                        className="size-2 shrink-0"
                       />
                     ) : null}
                   </Link>

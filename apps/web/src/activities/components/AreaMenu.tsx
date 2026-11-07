@@ -7,8 +7,8 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { cn } from "@/lib/utils"
-import { areaDotClassNames, type AreaColor } from "../areas"
+import type { AreaColor } from "../areas"
+import { ColorDot } from "./ColorDot"
 
 type AreaOption = {
   id: string
@@ -40,12 +40,7 @@ function AreaMenu({ areas, value, heading, trigger, onChange }: AreaMenuProps) {
                 if (option.id !== value) onChange(option.id)
               }}
             >
-              <span
-                className={cn(
-                  "size-2 rounded-full",
-                  areaDotClassNames[option.color]
-                )}
-              />
+              <ColorDot color={option.color} className="size-2" />
               <span className="flex-1">{option.name}</span>
               <span className="text-xs text-muted-foreground">
                 {option.key}

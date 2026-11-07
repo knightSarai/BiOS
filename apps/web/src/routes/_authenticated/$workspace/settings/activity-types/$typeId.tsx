@@ -1,6 +1,6 @@
 import { useSuspenseQuery } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
-import { TypeColorPicker } from "@/activities/components/TypeColorPicker"
+import { ColorPicker } from "@/activities/components/ColorPicker"
 import { TypeIcon } from "@/activities/components/TypeIcon"
 import { NotFound } from "@/components/common/NotFound"
 import { useUpdateActivityType } from "@/local-db/activity-type-mutations"
@@ -58,7 +58,7 @@ function ActivityTypePage() {
               updateType.mutate({ id: type.id, changes: { name } })
             }
           />
-          <TypeColorPicker
+          <ColorPicker
             value={type.color}
             onChange={(color) =>
               updateType.mutate({ id: type.id, changes: { color } })

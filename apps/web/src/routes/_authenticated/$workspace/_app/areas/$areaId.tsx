@@ -26,7 +26,7 @@ export const Route = createFileRoute(
     const [areas] = await Promise.all([
       context.queryClient.ensureQueryData(areasQuery(context.workspace)),
       context.queryClient.ensureQueryData(
-        activityListQuery(context.workspace.id, params.areaId)
+        activityListQuery(context.workspace.id)
       ),
     ])
     if (!areas.some((area) => area.id === params.areaId)) throw notFound()
@@ -39,9 +39,8 @@ function AreaPage() {
   const { workspace } = Route.useRouteContext()
   const { areaId } = Route.useParams()
   const { data: areas } = useSuspenseQuery(areasQuery(workspace))
-  const { data: activities } = useSuspenseQuery(
-    activityListQuery(workspace.id, areaId)
-  )
+  // The whole workspace, so a sub-activity filed in another area still counts.
+  const { data: activities } = useSuspenseQuery(activityListQuery(workspace.id))
   const openNewActivity = useSetAtom(openNewActivityAtom)
   const area = areas.find((candidate) => candidate.id === areaId)
   if (!area) return <AreaNotFound />
@@ -88,7 +87,7 @@ function AreaPage() {
               }}
               className="rounded-lg border p-4"
             />
-            {activities.length === 0 ? (
+            {activities.every((activity) => activity.areaId !== areaId) ? (
               <EmptyState.Root>
                 <EmptyState.Icon icon={CircleDashed} />
                 <EmptyState.Text>
@@ -103,6 +102,7 @@ function AreaPage() {
                 <ActivityListControls />
                 <ActivityList
                   activities={activities}
+                  areaId={areaId}
                   areas={areas}
                   workspaceId={workspace.id}
                   workspaceSlug={workspace.slug}

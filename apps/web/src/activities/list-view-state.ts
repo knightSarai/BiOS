@@ -1,9 +1,9 @@
 import { atom } from "jotai"
 import { atomWithStorage } from "jotai/utils"
+import { now, parseUtc } from "@knight-os/server/core"
 import {
   LIST_DATES,
   LIST_STATUSES,
-  type DateGroup,
   type ListDate,
   type ListStatuses,
 } from "./list-view"
@@ -49,6 +49,16 @@ const listStatusesAtom = atomWithStorage<ListStatuses>(
   { getOnInit: true }
 )
 
-const collapsedGroupsAtom = atom<DateGroup[]>([])
+// "<date>:<group>" keys, so collapsing Today under Due date leaves Created's Today open.
+const collapsedGroupsAtom = atom<string[]>([])
 
-export { collapsedGroupsAtom, listDateAtom, listStatusesAtom }
+// Ticks once a minute, so the date groups move on at midnight while the list is open.
+const minuteClockAtom = atom(parseUtc(now()))
+
+minuteClockAtom.onMount = (set) => {
+  set(parseUtc(now()))
+  const interval = setInterval(() => set(parseUtc(now())), 60_000)
+  return () => clearInterval(interval)
+}
+
+export { collapsedGroupsAtom, listDateAtom, listStatusesAtom, minuteClockAtom }

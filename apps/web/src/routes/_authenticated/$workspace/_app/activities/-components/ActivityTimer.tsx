@@ -113,23 +113,66 @@ function RunningFace({
 function LapList({ laps }: { laps: TimerLap[] }) {
   if (laps.length === 0) return null
   return (
-    <ol
-      aria-label="Laps"
-      className="flex max-h-48 flex-col overflow-y-auto border-t px-2 pt-2 text-sm tabular-nums"
+    <div className="flex flex-col border-t px-2 pt-2 text-sm tabular-nums">
+      <div
+        aria-hidden
+        className="flex items-center gap-3 pb-1 text-xs text-muted-foreground"
+      >
+        <span>Lap</span>
+        <span className="ml-auto">Time</span>
+        <span className="w-16 text-right">Total</span>
+      </div>
+      <ol
+        aria-label="Laps"
+        aria-live="polite"
+        className="flex max-h-48 flex-col overflow-y-auto"
+      >
+        {laps
+          .slice()
+          .reverse()
+          .map((lap) => (
+            <li key={lap.number} className="flex min-h-7 items-center gap-3">
+              <span className="text-muted-foreground">Lap {lap.number}</span>
+              <span className="ml-auto">
+                <span className="sr-only">lap time </span>
+                {formatClock(lap.seconds, "down")}
+              </span>
+              <span className="w-16 text-right text-muted-foreground">
+                <span className="sr-only">, total </span>
+                {formatClock(lap.total, "down")}
+              </span>
+            </li>
+          ))}
+      </ol>
+    </div>
+  )
+}
+
+// After a reload nothing stops a countdown that ran out, so Lap hides once the clock passes the end.
+function LapButton({
+  config,
+  entries,
+  onLap,
+}: {
+  config: TimerConfig
+  entries: TimeEntry[]
+  onLap: () => void
+}) {
+  const at = useAtomValue(clockAtom)
+  const total = timerTotalSeconds(config)
+  if (total !== null && elapsedSeconds(entries, at) >= total) return null
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-lg"
+      className="max-md:size-11"
+      aria-label="Lap"
+      title="Lap"
+      onClick={onLap}
     >
-      {laps
-        .slice()
-        .reverse()
-        .map((lap) => (
-          <li key={lap.number} className="flex min-h-7 items-center gap-3">
-            <span className="text-muted-foreground">Lap {lap.number}</span>
-            <span className="ml-auto">{formatClock(lap.seconds, "down")}</span>
-            <span className="w-16 text-right text-muted-foreground">
-              {formatClock(lap.total, "down")}
-            </span>
-          </li>
-        ))}
-    </ol>
+      <Flag />
+    </Button>
   )
 }
 
@@ -290,17 +333,7 @@ function ActivityTimer({
         )}
         <div className="flex items-center gap-1">
           {running && lapsAllowed(config) ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-lg"
-              className="max-md:size-11"
-              aria-label="Lap"
-              title="Lap"
-              onClick={lap}
-            >
-              <Flag />
-            </Button>
+            <LapButton config={config} entries={entries} onLap={lap} />
           ) : null}
           {running ? null : (
             <Button

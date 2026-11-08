@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   byCreation,
-  descendantsOf,
+  descendantIndex,
   groupTree,
   subActivityProgress,
   subActivityTree,
@@ -44,7 +44,7 @@ describe("subActivityProgress", () => {
   })
 })
 
-describe("descendantsOf", () => {
+describe("descendantIndex", () => {
   it("finds sub-activities at every depth", () => {
     const items = [
       item("gym", null),
@@ -52,7 +52,7 @@ describe("descendantsOf", () => {
       item("nested-2", "nested-1"),
       item("other", null),
     ]
-    expect(descendantsOf(items, "gym").map((row) => row.id)).toEqual([
+    expect(descendantIndex(items)("gym").map((row) => row.id)).toEqual([
       "nested-1",
       "nested-2",
     ])
@@ -60,7 +60,7 @@ describe("descendantsOf", () => {
 
   it("stops at a loop in the data", () => {
     const items = [item("a", "b"), item("b", "a")]
-    expect(descendantsOf(items, "a").map((row) => row.id)).toEqual(["b"])
+    expect(descendantIndex(items)("a").map((row) => row.id)).toEqual(["b"])
   })
 })
 

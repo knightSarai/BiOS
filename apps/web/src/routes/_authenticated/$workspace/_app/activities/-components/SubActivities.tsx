@@ -11,7 +11,7 @@ import { SubActivityProgress } from "@/activities/components/ProgressRing"
 import { StatusIcon } from "@/activities/components/StatusIcon"
 import { subActivityFormAtom } from "@/activities/new-activity"
 import {
-  descendantsOf,
+  descendantIndex,
   subActivityProgress,
   subActivityTree,
   type TreeNode,
@@ -36,12 +36,12 @@ type SubActivity = Awaited<
 
 function SubActivityRows({
   nodes,
-  all,
+  descendantsOf,
   workspace,
   nested,
 }: {
   nodes: TreeNode<SubActivity>[]
-  all: SubActivity[]
+  descendantsOf: (id: string) => SubActivity[]
   workspace: Workspace
   nested: boolean
 }) {
@@ -51,7 +51,7 @@ function SubActivityRows({
     <ul className={cn("flex flex-col", nested && "ml-7")}>
       {nodes.map(({ item: child, children }) => {
         const closed = child.status === "done" || child.status === "canceled"
-        const below = descendantsOf(all, child.id)
+        const below = descendantsOf(child.id)
         const progress = subActivityProgress(below.map((row) => row.status))
         return (
           <li
@@ -108,7 +108,7 @@ function SubActivityRows({
             {children.length > 0 ? (
               <SubActivityRows
                 nodes={children}
-                all={all}
+                descendantsOf={descendantsOf}
                 workspace={workspace}
                 nested
               />
@@ -162,9 +162,19 @@ function SubActivities({
     </div>
   ) : null
 
-  if (all.length === 0) {
-    return (
-      <div className={cn("flex flex-col gap-2", className)}>
+  // One outer shape for both states, so the form keeps focus when the first one is added
+  // and the live region is already there to announce it.
+  return (
+    <section
+      aria-label="Sub-activities"
+      className={cn("flex flex-col gap-1", className)}
+    >
+      <p aria-live="polite" className="sr-only">
+        {all.length === 0
+          ? ""
+          : `${progress.done} of ${progress.total} sub-activities done`}
+      </p>
+      {all.length === 0 ? (
         <Button
           type="button"
           variant="ghost"
@@ -176,40 +186,37 @@ function SubActivities({
           <Plus data-icon="inline-start" />
           Add sub-activities
         </Button>
-        {form}
-      </div>
-    )
-  }
-
-  return (
-    <section
-      aria-label="Sub-activities"
-      className={cn("flex flex-col gap-1", className)}
-    >
-      <div className="flex items-center justify-between gap-2 px-2">
-        <div className="flex items-center gap-3">
-          <h2 className="text-sm text-muted-foreground">Sub-activities</h2>
-          <SubActivityProgress done={progress.done} total={progress.total} />
-        </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          className="max-md:size-11"
-          aria-label="Add sub-activity"
-          title="Add sub-activity"
-          aria-expanded={formOpen}
-          onClick={openForm}
-        >
-          <Plus />
-        </Button>
-      </div>
-      <SubActivityRows
-        nodes={tree}
-        all={all}
-        workspace={workspace}
-        nested={false}
-      />
+      ) : (
+        <>
+          <div className="flex items-center justify-between gap-2 px-2">
+            <div className="flex items-center gap-3">
+              <h2 className="text-sm text-muted-foreground">Sub-activities</h2>
+              <SubActivityProgress
+                done={progress.done}
+                total={progress.total}
+              />
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="max-md:size-11"
+              aria-label="Add sub-activity"
+              title="Add sub-activity"
+              aria-expanded={formOpen}
+              onClick={openForm}
+            >
+              <Plus />
+            </Button>
+          </div>
+          <SubActivityRows
+            nodes={tree}
+            descendantsOf={descendantIndex(all)}
+            workspace={workspace}
+            nested={false}
+          />
+        </>
+      )}
       {form}
     </section>
   )

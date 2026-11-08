@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router"
 import { useAtom, useAtomValue } from "jotai"
 import { ChevronRight } from "lucide-react"
-import { now, toLocalDate } from "@knight-os/server/core"
+import { toLocalDate } from "@knight-os/server/core"
 import { activityKey } from "@/activities/areas"
 import { ColorDot } from "@/activities/components/ColorDot"
 import { SubActivityProgress } from "@/activities/components/ProgressRing"
@@ -24,11 +24,12 @@ import {
   collapsedGroupsAtom,
   listDateAtom,
   listStatusesAtom,
+  minuteClockAtom,
 } from "@/activities/list-view-state"
 import { statusLabels } from "@/activities/status"
 import {
   byCreation,
-  descendantsOf,
+  descendantIndex,
   groupTree,
   subActivityProgress,
   type TreeNode,
@@ -47,7 +48,10 @@ import type { ActivityRow, AreaRow } from "@/local-db/db"
 import { cn } from "@/lib/utils"
 
 type ActivityListProps = {
+  // The whole workspace, so parents and progress reach across areas.
   activities: ActivityRow[]
+  // Lists only this area's activities; the rest only appear as dimmed parents.
+  areaId: string | null
   areas: AreaRow[]
   workspaceId: string
   workspaceSlug: string
@@ -108,7 +112,7 @@ function ActivityListControls({ className }: { className?: string }) {
 
 function ActivityRows({
   nodes,
-  activities,
+  descendantsOf,
   areasById,
   workspaceId,
   workspaceSlug,
@@ -117,7 +121,7 @@ function ActivityRows({
   nested,
 }: {
   nodes: TreeNode<ActivityRow>[]
-  activities: ActivityRow[]
+  descendantsOf: (id: string) => ActivityRow[]
   areasById: Map<string, AreaRow>
   workspaceId: string
   workspaceSlug: string
@@ -135,7 +139,7 @@ function ActivityRows({
         const closed =
           activity.status === "done" || activity.status === "canceled"
         const progress = subActivityProgress(
-          descendantsOf(activities, activity.id).map((row) => row.status)
+          descendantsOf(activity.id).map((row) => row.status)
         )
         const dayLabel = listDayLabel(listDay(activity, by, timezone), by)
         return (
@@ -218,7 +222,7 @@ function ActivityRows({
             {children.length > 0 ? (
               <ActivityRows
                 nodes={children}
-                activities={activities}
+                descendantsOf={descendantsOf}
                 areasById={areasById}
                 workspaceId={workspaceId}
                 workspaceSlug={workspaceSlug}
@@ -238,6 +242,7 @@ function ActivityRows({
 // in another group, or hidden by the status filter, comes along dimmed.
 function ActivityList({
   activities,
+  areaId,
   areas,
   workspaceId,
   workspaceSlug,
@@ -247,15 +252,18 @@ function ActivityList({
   const by = useAtomValue(listDateAtom)
   const [collapsed, setCollapsed] = useAtom(collapsedGroupsAtom)
   const areasById = new Map(areas.map((area) => [area.id, area]))
-  const today = toLocalDate(now(), timezone)
+  const today = toLocalDate(useAtomValue(minuteClockAtom), timezone)
   const ordered = activities.toSorted(listOrder(by))
+  const descendantsOf = descendantIndex(activities)
   const groupOf = (activity: ActivityRow) =>
     dateGroupOf(listDay(activity, by, timezone), by, today)
 
   const groups = dateGroupsFor(by)
     .map((group) => {
       const isMember = (activity: ActivityRow) =>
-        isListed(activity, statuses) && groupOf(activity) === group
+        (areaId === null || activity.areaId === areaId) &&
+        isListed(activity, statuses) &&
+        groupOf(activity) === group
       return {
         group,
         count: activities.filter(isMember).length,
@@ -285,7 +293,8 @@ function ActivityList({
   return (
     <div className="flex flex-col gap-1">
       {groups.map(({ group, count, tree }) => {
-        const open = !collapsed.includes(group)
+        const collapseKey = `${by}:${group}`
+        const open = !collapsed.includes(collapseKey)
         return (
           <section key={group} aria-label={dateGroupLabels[group]}>
             <h2>
@@ -295,8 +304,8 @@ function ActivityList({
                 onClick={() =>
                   setCollapsed(
                     open
-                      ? [...collapsed, group]
-                      : collapsed.filter((other) => other !== group)
+                      ? [...collapsed, collapseKey]
+                      : collapsed.filter((other) => other !== collapseKey)
                   )
                 }
                 className="flex min-h-9 w-full items-center gap-2 rounded-md bg-muted/60 px-3 text-left text-sm font-medium hover:bg-muted max-md:min-h-11"
@@ -318,7 +327,7 @@ function ActivityList({
               <div className="py-1">
                 <ActivityRows
                   nodes={tree}
-                  activities={activities}
+                  descendantsOf={descendantsOf}
                   areasById={areasById}
                   workspaceId={workspaceId}
                   workspaceSlug={workspaceSlug}

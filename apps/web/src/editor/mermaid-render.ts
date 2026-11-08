@@ -11,8 +11,12 @@ const fontFamily = '"Inter Variable", Inter, system-ui, sans-serif'
 const chartColors = ["#b98ac0", "#d27f9b", "#7e9cd8", "#d9a441", "#5fb3a6"]
 
 const chartVariables = (text: string, line: string, background: string) => ({
+  // Mermaid fills pie6–pie12 from the greys otherwise, so the palette repeats.
   ...Object.fromEntries(
-    chartColors.map((color, index) => [`pie${index + 1}`, color])
+    Array.from({ length: 12 }, (_, index) => [
+      `pie${index + 1}`,
+      chartColors[index % chartColors.length],
+    ])
   ),
   pieOpacity: "1",
   pieStrokeColor: background,

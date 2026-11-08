@@ -27,7 +27,9 @@ const childrenByParent = <Item extends TreeItem>(items: Item[]) => {
   const children = new Map<string, Item[]>()
   for (const item of items) {
     if (item.parentId === null) continue
-    children.set(item.parentId, [...(children.get(item.parentId) ?? []), item])
+    const siblings = children.get(item.parentId)
+    if (siblings) siblings.push(item)
+    else children.set(item.parentId, [item])
   }
   return children
 }
@@ -53,19 +55,23 @@ const buildTree = <Item extends TreeItem>(
   return build(roots)
 }
 
-// Every activity under `id`, at any depth, in the order `items` lists them.
-const descendantsOf = <Item extends TreeItem>(items: Item[], id: string) => {
+// Built once per list so each row's progress walks only its own subtree.
+const descendantIndex = <Item extends TreeItem>(items: Item[]) => {
   const children = childrenByParent(items)
-  const found = new Set<string>([id])
-  const visit = (parentId: string) => {
-    for (const child of children.get(parentId) ?? []) {
-      if (found.has(child.id)) continue
-      found.add(child.id)
-      visit(child.id)
+  return (id: string) => {
+    const found = new Set<string>([id])
+    const descendants: Item[] = []
+    const visit = (parentId: string) => {
+      for (const child of children.get(parentId) ?? []) {
+        if (found.has(child.id)) continue
+        found.add(child.id)
+        descendants.push(child)
+        visit(child.id)
+      }
     }
+    visit(id)
+    return descendants
   }
-  visit(id)
-  return items.filter((item) => item.id !== id && found.has(item.id))
 }
 
 const subActivityTree = <Item extends TreeItem>(
@@ -107,7 +113,7 @@ const groupTree = <Item extends TreeItem>(
 
 export {
   byCreation,
-  descendantsOf,
+  descendantIndex,
   groupTree,
   subActivityProgress,
   subActivityTree,

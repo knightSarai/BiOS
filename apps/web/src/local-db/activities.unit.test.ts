@@ -1,6 +1,7 @@
 import "fake-indexeddb/auto"
 import { afterEach, describe, expect, it } from "vitest"
 import { DexieYProvider } from "y-dexie"
+import { parseUtc } from "@knight-os/server/core"
 import {
   prosemirrorToYXmlFragment,
   yXmlFragmentToProseMirrorRootNode,
@@ -183,6 +184,21 @@ describe("activity content", () => {
     expect(titleOf(body)).toBe("Weekly weigh-in")
   })
 })
+
+const bodyOf = async (activities: ActivitiesRepository, id: string) => {
+  const row = await activities.byId(id)
+  if (!row) throw new Error("Activity row missing")
+  const provider = DexieYProvider.load(row.content)
+  await provider.whenLoaded
+  const body = yXmlFragmentToProseMirrorRootNode(
+    row.content.getXmlFragment(DOCUMENT_FRAGMENT),
+    schema
+  )
+  DexieYProvider.release(row.content)
+  const blocks: string[] = []
+  body.forEach((node) => blocks.push(`${node.type.name}:${node.textContent}`))
+  return blocks
+}
 
 describe("notes written when creating an activity", () => {
   it("go into the body as one paragraph per line after the title", async () => {
@@ -373,10 +389,8 @@ describe("duplicating an activity", () => {
       listOnly,
     ])
     await activities.setTimer(workout.id, {
-      mode: "intervals",
-      workSeconds: 180,
-      restSeconds: 60,
-      rounds: 3,
+      mode: "down",
+      seconds: 180,
       sound: "bell",
     })
     await writeBody(
@@ -431,7 +445,7 @@ describe("duplicating an activity", () => {
       status: "todo",
       dueDate: null,
       origin: null,
-      timer: { mode: "intervals", rounds: 3 },
+      timer: { mode: "down", seconds: 180 },
     })
 
     const copyBody = await activityIdsInBody(activities, copy.id)
@@ -524,13 +538,45 @@ describe("activity timers", () => {
     await activities.createMany([activity])
     await expect(
       activities.setTimer(activity.id, {
-        mode: "countdown",
+        mode: "down",
         seconds: 0,
         sound: "none",
       })
     ).rejects.toThrow()
     await activities.setTimer(activity.id, null)
     expect((await activities.byId(activity.id))?.timer).toBeNull()
+  })
+
+  it("changes only the sound, keeping a stored countdown", async () => {
+    const { activities, home } = await setup()
+    const parent = newActivity(home.id, "Practice")
+    const scales = { ...newActivity(home.id, "Scales"), parentId: parent.id }
+    await activities.createMany([parent, scales])
+    await activities.setTimer(parent.id, {
+      mode: "down",
+      seconds: 600,
+      sound: "none",
+    })
+    await activities.setSound(parent.id, "bell")
+    expect((await activities.byId(parent.id))?.timer).toEqual({
+      mode: "down",
+      seconds: 600,
+      sound: "bell",
+    })
+  })
+
+  it("gives a parent without a timer a count-up, and leaves a leaf on its type's timer", async () => {
+    const { activities, home } = await setup()
+    const parent = newActivity(home.id, "Weekly review")
+    const inbox = { ...newActivity(home.id, "Inbox"), parentId: parent.id }
+    await activities.createMany([parent, inbox])
+    await activities.setSound(parent.id, "chime")
+    await activities.setSound(inbox.id, "chime")
+    expect((await activities.byId(parent.id))?.timer).toEqual({
+      mode: "up",
+      sound: "chime",
+    })
+    expect((await activities.byId(inbox.id))?.timer).toBeNull()
   })
 })
 
@@ -561,6 +607,135 @@ describe("sub-activities", () => {
       ["Round 2", parent.id],
       ["Set 1", first.id],
     ])
+  })
+
+  it("makes an empty parent the series of repeats, with the gaps marked", async () => {
+    const { activities, home } = await setupFamily()
+    const [empty] = await activities.createMany([
+      newActivity(home.id, "Practice"),
+    ])
+    if (!empty) throw new Error("Expected the parent to be created")
+    const step = (title: string, generated: "step" | "gap" = "step") => ({
+      ...newActivity(home.id, title),
+      generated,
+    })
+    const holder = newActivity(home.id, "Scales")
+    await activities.addSeries(empty.id, holder, [
+      step("Scales 1"),
+      step("Rest", "gap"),
+      step("Scales 2"),
+    ])
+    const rows = await activities.children(empty.id)
+    expect(rows.map((row) => [row.title, row.generated])).toEqual([
+      ["Scales 1", "step"],
+      ["Rest", "gap"],
+      ["Scales 2", "step"],
+    ])
+    expect((await activities.byId(empty.id))?.series).toBe(true)
+    expect(await activities.byId(holder.id)).toBeNull()
+    await expect(
+      activities.addSeries("missing", holder, [step("Scales 1")])
+    ).rejects.toThrow(InvalidParentError)
+  })
+
+  it("puts repeats under a new holder when the parent already has sub-activities", async () => {
+    const { db, activities, home, parent } = await setupFamily()
+    const step = (title: string) => ({
+      ...newActivity(home.id, title),
+      generated: "step" as const,
+    })
+    const holder = newActivity(home.id, "Scales")
+    await activities.addSeries(
+      parent.id,
+      holder,
+      [step("Scales 1"), step("Scales 2")],
+      [
+        {
+          startedAt: parseUtc("2026-01-01T08:00:00.000Z"),
+          endedAt: parseUtc("2026-01-01T08:10:00.000Z"),
+        },
+      ]
+    )
+    const all = await activities.subActivities(parent.id)
+    expect(all.map((row) => [row.title, row.parentId])).toEqual([
+      ["Round 1", parent.id],
+      ["Round 2", parent.id],
+      ["Scales", parent.id],
+      ["Scales 1", holder.id],
+      ["Scales 2", holder.id],
+    ])
+    expect((await activities.byId(parent.id))?.series).toBe(false)
+    expect((await activities.byId(holder.id))?.series).toBe(true)
+    const logged = await db.timeEntries.toArray()
+    expect(logged.map((entry) => entry.activityId)).toEqual([holder.id])
+  })
+
+  it("puts the notes on a new holder only, not on each repeat", async () => {
+    const { activities, home, parent } = await setupFamily()
+    const notes = "Slow, then up to tempo"
+    const step = (title: string) => ({
+      ...newActivity(home.id, title),
+      generated: "step" as const,
+      notes,
+    })
+    const holder = { ...newActivity(home.id, "Scales"), notes }
+    const repeats = [step("Scales 1"), step("Scales 2")]
+    await activities.addSeries(parent.id, holder, repeats)
+    expect(await bodyOf(activities, holder.id)).toEqual([
+      "title:Scales",
+      `paragraph:${notes}`,
+    ])
+    for (const repeat of repeats) {
+      expect(await bodyOf(activities, repeat.id)).toEqual([
+        `title:${repeat.title}`,
+        "paragraph:",
+      ])
+    }
+  })
+
+  it("creates nothing when the time typed in with a new activity is invalid", async () => {
+    const { db, activities, home } = await setupFamily()
+    const before = await db.activities.count()
+    const fresh = newActivity(home.id, "Too long")
+    await expect(
+      activities.createMany(
+        [fresh],
+        [
+          {
+            activityId: fresh.id,
+            startedAt: parseUtc("2026-01-01T08:00:00.000Z"),
+            endedAt: parseUtc("2026-01-01T08:00:00.000Z"),
+          },
+        ]
+      )
+    ).rejects.toThrow()
+    expect(await db.activities.count()).toBe(before)
+  })
+
+  it("logs time and ticks it done together, or neither", async () => {
+    const { db, activities, first, second } = await setupFamily()
+    const session = {
+      startedAt: parseUtc("2026-01-01T08:00:00.000Z"),
+      endedAt: parseUtc("2026-01-01T08:10:00.000Z"),
+    }
+    await expect(
+      activities.logTime(
+        [
+          { ...session, activityId: first.id },
+          { ...session, activityId: "missing" },
+        ],
+        [first.id]
+      )
+    ).rejects.toThrow()
+    expect(await db.timeEntries.count()).toBe(0)
+    expect((await activities.byId(first.id))?.status).toBe("todo")
+
+    await activities.logTime(
+      [{ ...session, activityId: second.id }],
+      [second.id]
+    )
+    expect(await db.timeEntries.count()).toBe(1)
+    expect((await activities.byId(second.id))?.status).toBe("done")
   })
 
   it("rejects a parent that would make a loop or doesn't exist", async () => {

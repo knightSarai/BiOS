@@ -1,24 +1,31 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { now, parseUtc } from "@knight-os/server/core"
-import type { ActivityStatus } from "@/activities/status"
 import {
-  finishTimeFor,
-  resolveTimer,
-  stopTimeFor,
-  type TimerConfig,
-} from "@/activities/timer"
-import { disarmTimer } from "@/activities/timer-runner"
+  useMutation,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query"
+import { toast } from "sonner"
+import { now, parseUtc } from "@knight-os/server/core"
+import { nodesOf, type Action } from "@/activities/routine"
+import { cuesAhead } from "@/activities/routine-view"
+import type { ActivityStatus } from "@/activities/status"
+import type { TimerConfig, TimerSound } from "@/activities/timer"
+import {
+  armRoutine,
+  disarmPending,
+  disarmRoutine,
+  isArmed,
+} from "@/activities/timer-runner"
 import type { EditorContent } from "@/editor/mention-index"
-import type { NewActivity } from "./activities"
+import type { NewActivity, SeriesHolder } from "./activities"
 import {
   activitiesRepository,
   activityKeys,
-  activityTypesRepository,
   areasRepository,
-  timeEntriesRepository,
+  routinesRepository,
 } from "./activity-queries"
 import type { NewArea } from "./areas"
-import type { TimeEntryRow } from "./db"
+import { MissingRoutineError, toSeconds } from "./routines"
+import type { LoggedSession } from "./time-entries"
 import { notebookContext, notebookKeys } from "./notebook-queries"
 import { syncEntityFolder } from "@/notebook/use-cases"
 
@@ -28,17 +35,109 @@ const syncActivityFolder = (workspaceId: string, activityId: string) =>
     id: activityId,
   })
 
+const invalidateActivities = (queryClient: QueryClient, workspaceId: string) =>
+  Promise.all([
+    queryClient.invalidateQueries({
+      queryKey: activityKeys.all(workspaceId),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: notebookKeys.all(workspaceId),
+    }),
+  ])
+
 const useInvalidateActivities = (workspaceId: string) => {
   const queryClient = useQueryClient()
-  return () =>
-    Promise.all([
-      queryClient.invalidateQueries({
-        queryKey: activityKeys.all(workspaceId),
-      }),
-      queryClient.invalidateQueries({
-        queryKey: notebookKeys.all(workspaceId),
-      }),
-    ])
+  return () => invalidateActivities(queryClient, workspaceId)
+}
+
+type RoutineRequest = {
+  activityId: string
+  action: Action | { kind: "sync" }
+  within?: string | null
+}
+
+const currentSeconds = () => toSeconds(parseUtc(now()))
+
+// Stopping the timer by hand silences it at once; a routine that finishes by itself lets
+// its last cue ring out.
+const silences = (action: RoutineRequest["action"]) =>
+  action.kind === "pause" ||
+  action.kind === "startOver" ||
+  action.kind === "jumpTo"
+
+// Armed from the committed result rather than from a component's callback, so a click that a
+// hand-over sync overtakes, or a page that unmounts, still leaves the right schedule.
+const applyRoutine = async (
+  queryClient: QueryClient,
+  workspaceId: string,
+  { activityId, action, within = null }: RoutineRequest
+) => {
+  const session = await routinesRepository(workspaceId).apply(
+    activityId,
+    action,
+    within
+  )
+  armRoutine({
+    workspaceId,
+    asOf: session.now,
+    running: session.phase === "running",
+    silence: silences(action),
+    routineId: session.root.id,
+    ids: nodesOf(session.root).map((node) => node.id),
+    sound: session.root.timer.sound,
+    cues: cuesAhead(session),
+    clock: currentSeconds,
+    onHandOver: () =>
+      void syncRoutine(queryClient, workspaceId, session.root.id).catch(() =>
+        toast.error(
+          `Couldn't move ${session.root.title || "the timer"} on. Reload to catch up.`
+        )
+      ),
+  })
+  return session
+}
+
+// A routine deleted while a hand-over was waiting has nothing left to sync.
+const syncRoutine = (
+  queryClient: QueryClient,
+  workspaceId: string,
+  activityId: string
+) =>
+  applyRoutine(queryClient, workspaceId, {
+    activityId,
+    action: { kind: "sync" },
+  })
+    .catch((error: unknown) => {
+      if (!(error instanceof MissingRoutineError)) throw error
+      disarmRoutine(workspaceId, activityId)
+      return null
+    })
+    .finally(() => invalidateActivities(queryClient, workspaceId))
+
+// Writes the hand-overs the running routine missed and arms the ones ahead. `force` re-arms
+// one already armed, after its timers or its tree changed; with nothing running, no
+// hand-over stays scheduled.
+const resyncRunningRoutine = async (
+  queryClient: QueryClient,
+  workspaceId: string,
+  force: boolean
+) => {
+  const playing = await routinesRepository(workspaceId).playingRoutineId()
+  if (playing === null) {
+    disarmPending(workspaceId)
+    return
+  }
+  if (!force && isArmed(workspaceId, playing)) return
+  await syncRoutine(queryClient, workspaceId, playing)
+}
+
+// After a change to a routine's tree, its hand-overs are read again from what's stored.
+const useInvalidateAndRearm = (workspaceId: string) => {
+  const queryClient = useQueryClient()
+  return async () => {
+    await invalidateActivities(queryClient, workspaceId)
+    await resyncRunningRoutine(queryClient, workspaceId, true)
+  }
 }
 
 const useInvalidateActivityTitle = (workspaceId: string, id: string) => {
@@ -60,18 +159,50 @@ const useInvalidateActivityTitle = (workspaceId: string, id: string) => {
     ])
 }
 
+// An activity running when it gains sub-activities stops, so the routine is re-armed.
 const useCreateActivities = (workspaceId: string) => {
-  const invalidate = useInvalidateActivities(workspaceId)
+  const invalidate = useInvalidateAndRearm(workspaceId)
   return useMutation({
     networkMode: "always",
-    mutationFn: (activities: NewActivity[]) =>
-      activitiesRepository(workspaceId).createMany(activities),
+    mutationFn: ({
+      activities,
+      logged = [],
+    }: {
+      activities: NewActivity[]
+      logged?: LoggedSession[]
+    }) => activitiesRepository(workspaceId).createMany(activities, logged),
     onSuccess: invalidate,
   })
 }
 
+const useAddSeries = (workspaceId: string) => {
+  const invalidate = useInvalidateAndRearm(workspaceId)
+  return useMutation({
+    networkMode: "always",
+    mutationFn: ({
+      parentId,
+      holder,
+      repeats,
+      logged = [],
+    }: {
+      parentId: string
+      holder: SeriesHolder
+      repeats: NewActivity[]
+      logged?: Omit<LoggedSession, "activityId">[]
+    }) =>
+      activitiesRepository(workspaceId).addSeries(
+        parentId,
+        holder,
+        repeats,
+        logged
+      ),
+    onSuccess: invalidate,
+  })
+}
+
+// Done on the activity the timer is playing hands over, so the routine is re-armed.
 const useSetActivityStatus = (workspaceId: string) => {
-  const invalidate = useInvalidateActivities(workspaceId)
+  const invalidate = useInvalidateAndRearm(workspaceId)
   return useMutation({
     networkMode: "always",
     mutationFn: ({ id, status }: { id: string; status: ActivityStatus }) =>
@@ -81,7 +212,7 @@ const useSetActivityStatus = (workspaceId: string) => {
 }
 
 const useToggleActivityDone = (workspaceId: string) => {
-  const invalidate = useInvalidateActivities(workspaceId)
+  const invalidate = useInvalidateAndRearm(workspaceId)
   return useMutation({
     networkMode: "always",
     mutationFn: (id: string) =>
@@ -176,8 +307,9 @@ const useSetActivityField = (workspaceId: string) => {
   })
 }
 
+// A type can carry the timer an activity plays.
 const useChangeActivityType = (workspaceId: string) => {
-  const invalidate = useInvalidateActivities(workspaceId)
+  const invalidate = useInvalidateAndRearm(workspaceId)
   return useMutation({
     networkMode: "always",
     mutationFn: ({ id, typeId }: { id: string; typeId: string | null }) =>
@@ -186,28 +318,46 @@ const useChangeActivityType = (workspaceId: string) => {
   })
 }
 
+// A running routine's hand-overs move with its timers, so they're re-armed from the new ones.
 const useSetActivityTimer = (workspaceId: string) => {
-  const invalidate = useInvalidateActivities(workspaceId)
+  const queryClient = useQueryClient()
   return useMutation({
     networkMode: "always",
     mutationFn: ({ id, timer }: { id: string; timer: TimerConfig | null }) =>
       activitiesRepository(workspaceId).setTimer(id, timer),
-    onSuccess: invalidate,
+    onSuccess: async () => {
+      await invalidateActivities(queryClient, workspaceId)
+      await resyncRunningRoutine(queryClient, workspaceId, true)
+    },
+  })
+}
+
+const useSetActivitySound = (workspaceId: string) => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    networkMode: "always",
+    mutationFn: ({ id, sound }: { id: string; sound: TimerSound }) =>
+      activitiesRepository(workspaceId).setSound(id, sound),
+    onSuccess: async () => {
+      await invalidateActivities(queryClient, workspaceId)
+      await resyncRunningRoutine(queryClient, workspaceId, true)
+    },
   })
 }
 
 const useSetActivityParent = (workspaceId: string) => {
-  const invalidate = useInvalidateActivities(workspaceId)
+  const invalidate = useInvalidateAndRearm(workspaceId)
   return useMutation({
     networkMode: "always",
     mutationFn: ({ id, parentId }: { id: string; parentId: string | null }) =>
-      activitiesRepository(workspaceId).setParent(id, parentId),
+      routinesRepository(workspaceId).move(id, parentId),
     onSuccess: invalidate,
   })
 }
 
+// A copy that lands in a running routine changes what comes next, so the routine is re-armed.
 const useDuplicateActivity = (workspaceId: string) => {
-  const invalidate = useInvalidateActivities(workspaceId)
+  const invalidate = useInvalidateAndRearm(workspaceId)
   return useMutation({
     networkMode: "always",
     mutationFn: (id: string) => activitiesRepository(workspaceId).duplicate(id),
@@ -215,124 +365,40 @@ const useDuplicateActivity = (workspaceId: string) => {
   })
 }
 
-const useInvalidateTimeEntries = (workspaceId: string) => {
+// Every routine action can tick activities, add laps and move time, so it refreshes them all.
+const useRoutineAction = (workspaceId: string) => {
   const queryClient = useQueryClient()
-  return () =>
-    queryClient.invalidateQueries({
-      queryKey: [...activityKeys.all(workspaceId), "time-entries"],
-    })
-}
-
-const timerOf = async (workspaceId: string, activityId: string) => {
-  const activity = await activitiesRepository(workspaceId).byId(activityId)
-  const type = activity?.typeId
-    ? await activityTypesRepository(workspaceId).byId(activity.typeId)
-    : null
-  return resolveTimer(activity?.timer ?? null, type?.timer ?? null)
-}
-
-const stopCapped = async (
-  workspaceId: string,
-  activityId: string,
-  timer: TimerConfig,
-  finished = false
-) => {
-  const entries = timeEntriesRepository(workspaceId)
-  const logged = await entries.list(activityId)
-  const stoppedAt =
-    (finished ? finishTimeFor(timer, logged) : null) ??
-    stopTimeFor(timer, logged, parseUtc(now()))
-  await entries.stop(activityId, stoppedAt)
-}
-
-// A timer left running elsewhere (another tab, before a reload) is stopped at its own total first.
-const useStartTimer = (workspaceId: string) => {
-  const invalidate = useInvalidateTimeEntries(workspaceId)
   return useMutation({
     networkMode: "always",
-    mutationFn: async (activityId: string) => {
-      const entries = timeEntriesRepository(workspaceId)
-      const running = await entries.running()
-      if (running && running.activityId !== activityId) {
-        await stopCapped(
-          workspaceId,
-          running.activityId,
-          await timerOf(workspaceId, running.activityId)
-        )
-      }
-      return entries.start(activityId)
-    },
-    onSuccess: invalidate,
+    mutationFn: (request: RoutineRequest) =>
+      applyRoutine(queryClient, workspaceId, request),
+    onSuccess: () => invalidateActivities(queryClient, workspaceId),
   })
 }
 
-const useStopTimer = (workspaceId: string) => {
-  const invalidate = useInvalidateTimeEntries(workspaceId)
+const useLogTime = (workspaceId: string) => {
+  const invalidate = useInvalidateAndRearm(workspaceId)
   return useMutation({
     networkMode: "always",
     mutationFn: ({
-      activityId,
-      timer,
-      finished,
+      sessions,
+      done,
+      groups,
     }: {
-      activityId: string
-      timer: TimerConfig
-      finished: boolean
-    }) => stopCapped(workspaceId, activityId, timer, finished),
+      sessions: LoggedSession[]
+      done: string[]
+      groups: string[]
+    }) => activitiesRepository(workspaceId).logTime(sessions, done, groups),
     onSuccess: invalidate,
   })
 }
 
-const useLapTimer = (workspaceId: string) => {
-  const invalidate = useInvalidateTimeEntries(workspaceId)
-  return useMutation({
-    networkMode: "always",
-    mutationFn: async ({
-      activityId,
-      timer,
-    }: {
-      activityId: string
-      timer: TimerConfig
-    }) => {
-      const entries = timeEntriesRepository(workspaceId)
-      const logged = await entries.list(activityId)
-      return entries.lap(
-        activityId,
-        stopTimeFor(timer, logged, parseUtc(now()))
-      )
-    },
-    onSuccess: invalidate,
-  })
-}
-
-const useClearTimer = (workspaceId: string) => {
-  const invalidate = useInvalidateTimeEntries(workspaceId)
-  return useMutation({
-    networkMode: "always",
-    mutationFn: (activityId: string) =>
-      timeEntriesRepository(workspaceId).clear(activityId),
-    onSuccess: invalidate,
-  })
-}
-
-const useRestoreTimeEntries = (workspaceId: string) => {
-  const invalidate = useInvalidateTimeEntries(workspaceId)
-  return useMutation({
-    networkMode: "always",
-    mutationFn: (rows: TimeEntryRow[]) =>
-      timeEntriesRepository(workspaceId).restore(rows),
-    onSuccess: invalidate,
-  })
-}
-
+// Re-armed from what's left, so deleting a step that isn't playing keeps the routine's sounds.
 const useDeleteActivity = (workspaceId: string, id: string) => {
   const queryClient = useQueryClient()
   return useMutation({
     networkMode: "always",
-    mutationFn: () => {
-      disarmTimer(id)
-      return activitiesRepository(workspaceId).delete(id)
-    },
+    mutationFn: () => activitiesRepository(workspaceId).delete(id),
     onSuccess: async () => {
       queryClient.removeQueries({
         queryKey: activityKeys.detail(workspaceId, id),
@@ -340,20 +406,22 @@ const useDeleteActivity = (workspaceId: string, id: string) => {
       await queryClient.invalidateQueries({
         queryKey: activityKeys.all(workspaceId),
       })
+      await resyncRunningRoutine(queryClient, workspaceId, true)
     },
   })
 }
 
 export {
-  useClearTimer,
-  useLapTimer,
+  resyncRunningRoutine,
+  syncRoutine,
+  useAddSeries,
+  useLogTime,
+  useRoutineAction,
   useCreateActivities,
   useDuplicateActivity,
-  useRestoreTimeEntries,
   useSetActivityParent,
+  useSetActivitySound,
   useSetActivityTimer,
-  useStartTimer,
-  useStopTimer,
   useDeleteActivity,
   useCreateArea,
   useMoveActivityToArea,

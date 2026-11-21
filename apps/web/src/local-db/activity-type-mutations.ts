@@ -2,7 +2,12 @@ import { useMutation, useQueryClient } from "@tanstack/react-query"
 import type { FieldKind } from "@/activities/fields"
 import type { ActivityStatus } from "@/activities/status"
 import type { ActivityTypeChanges, NewActivityType } from "./activity-types"
-import { activityKeys, activityTypesRepository } from "./activity-queries"
+import { resyncRunningRoutine } from "./activity-mutations"
+import {
+  activityKeys,
+  activityTypesRepository,
+  routinesRepository,
+} from "./activity-queries"
 
 // Field and type changes can rewrite activities' values, so activity queries refresh too.
 const useInvalidateActivities = (workspaceId: string) => {
@@ -21,18 +26,32 @@ const useCreateActivityType = (workspaceId: string) => {
   })
 }
 
+// A type's timer is the timer of every activity without its own, so a running routine
+// catches up under the old one and re-arms from the new one.
 const useUpdateActivityType = (workspaceId: string) => {
+  const queryClient = useQueryClient()
   const invalidate = useInvalidateActivities(workspaceId)
   return useMutation({
     networkMode: "always",
-    mutationFn: ({
+    mutationFn: async ({
       id,
       changes,
     }: {
       id: string
       changes: ActivityTypeChanges
-    }) => activityTypesRepository(workspaceId).update(id, changes),
-    onSuccess: invalidate,
+    }) => {
+      const update = () =>
+        activityTypesRepository(workspaceId).update(id, changes)
+      return changes.timer === undefined
+        ? update()
+        : routinesRepository(workspaceId).retime(update)
+    },
+    onSuccess: async (_, { changes }) => {
+      await invalidate()
+      if (changes.timer !== undefined) {
+        await resyncRunningRoutine(queryClient, workspaceId, true)
+      }
+    },
   })
 }
 
@@ -53,12 +72,20 @@ const useRenameTypeStatus = (workspaceId: string) => {
   })
 }
 
+// Its activities lose its timer, so a running routine catches up and re-arms, as on a timer edit.
 const useDeleteActivityType = (workspaceId: string) => {
+  const queryClient = useQueryClient()
   const invalidate = useInvalidateActivities(workspaceId)
   return useMutation({
     networkMode: "always",
-    mutationFn: (id: string) => activityTypesRepository(workspaceId).delete(id),
-    onSuccess: invalidate,
+    mutationFn: async (id: string) => {
+      await routinesRepository(workspaceId).catchUpRunning()
+      return activityTypesRepository(workspaceId).delete(id)
+    },
+    onSuccess: async () => {
+      await invalidate()
+      await resyncRunningRoutine(queryClient, workspaceId, true)
+    },
   })
 }
 

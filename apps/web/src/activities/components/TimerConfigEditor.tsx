@@ -75,19 +75,17 @@ function CommitNumberInput({
 function DurationInput({
   label,
   value,
-  min = 1,
   onCommit,
 }: {
   label: string
   value: number
-  min?: number
   onCommit: (value: number) => void
 }) {
   return (
     <CommitNumberInput
       label={label}
       value={value}
-      min={min}
+      min={1}
       max={MAX_TIMER_SECONDS}
       format={(seconds) => formatClock(seconds, "down")}
       parse={parseClock}
@@ -103,45 +101,14 @@ function ModeDurations({
   config: TimerConfig
   onChange: (config: TimerConfig) => void
 }) {
-  switch (config.mode) {
-    case "stopwatch":
-      return null
-    case "countdown":
-      return (
-        <DurationInput
-          label="Duration"
-          value={config.seconds}
-          onCommit={(seconds) => onChange({ ...config, seconds })}
-        />
-      )
-    case "intervals":
-      return (
-        <div className="flex flex-wrap gap-3">
-          <DurationInput
-            label="Work"
-            value={config.workSeconds}
-            onCommit={(workSeconds) => onChange({ ...config, workSeconds })}
-          />
-          <DurationInput
-            label="Rest"
-            value={config.restSeconds}
-            min={0}
-            onCommit={(restSeconds) => onChange({ ...config, restSeconds })}
-          />
-          <CommitNumberInput
-            label="Rounds"
-            value={config.rounds}
-            min={1}
-            max={100}
-            format={String}
-            parse={(text) =>
-              /^\d+$/.test(text.trim()) ? Number(text.trim()) : null
-            }
-            onCommit={(rounds) => onChange({ ...config, rounds })}
-          />
-        </div>
-      )
-  }
+  if (config.mode === "up") return null
+  return (
+    <DurationInput
+      label="Duration"
+      value={config.seconds}
+      onCommit={(seconds) => onChange({ ...config, seconds })}
+    />
+  )
 }
 
 function TimerConfigEditor({
@@ -182,7 +149,7 @@ function TimerConfigEditor({
         </ToggleGroup>
       </div>
       <ModeDurations config={config} onChange={onChange} />
-      {config.mode === "stopwatch" ? null : (
+      {config.mode === "up" ? null : (
         <div className="flex flex-col gap-1.5">
           <span id={soundLabelId} className="text-xs text-muted-foreground">
             Sound

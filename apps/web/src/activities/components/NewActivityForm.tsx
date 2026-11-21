@@ -5,13 +5,17 @@ import { atom, useAtom } from "jotai"
 import {
   CalendarDays,
   ChevronRight,
+  Minus,
+  Plus,
+  Repeat,
   Settings,
   Target,
+  TriangleAlert,
   XIcon,
 } from "lucide-react"
 import { toast } from "sonner"
 import { z } from "zod"
-import { formatDayLabel } from "@knight-os/server/core"
+import { formatDayLabel, now, parseUtc } from "@knight-os/server/core"
 import { Form } from "@/components/forms/Form"
 import { Button } from "@/components/ui/button"
 import {
@@ -20,23 +24,48 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Field, FieldLabel } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { GoalIcon } from "@/goals/components/GoalIcon"
 import { useAppForm } from "@/hooks/form"
-import { useCreateActivities } from "@/local-db/activity-mutations"
+import type { NewActivity } from "@/local-db/activities"
+import {
+  useAddSeries,
+  useCreateActivities,
+} from "@/local-db/activity-mutations"
 import { activityTypesQuery, areasQuery } from "@/local-db/activity-queries"
 import { goalListQuery } from "@/local-db/goal-queries"
+import { logProblem, type LoggedSession } from "@/local-db/time-entries"
 import { cn } from "@/lib/utils"
+import { StoredIcon } from "@/notebook/components/StoredIcon"
+import { EMPTY, secondsToValue, valueToSeconds } from "../duration"
+import { backToBack, endOf } from "../log-time"
 import { createMoreAtom, type NewActivityRequest } from "../new-activity"
-import { statusName } from "../activity-types"
+import { statusName, type TypeColor } from "../activity-types"
 import { invalidFields, type FieldValue } from "../fields"
+import {
+  MAX_REPEAT,
+  repeatCount,
+  repeatLabel,
+  seriesSteps,
+  stepStatus,
+  timerFrom,
+} from "../series"
 import { ACTIVITY_STATUSES } from "../status"
+import type { TimerConfig } from "../timer"
 import { AreaMenu } from "./AreaMenu"
 import { ColorDot } from "./ColorDot"
 import { DueDateMenu } from "./DueDateMenu"
+import { DurationChip } from "./DurationField"
 import { FieldInput } from "./FieldInput"
 import { GoalMenu } from "./GoalMenu"
+import { WhenField } from "./LogTime"
 import { StatusIcon } from "./StatusIcon"
 import { StatusMenu } from "./StatusMenu"
 import { TypeIcon } from "./TypeIcon"
@@ -58,7 +87,25 @@ const newActivitySchema = z.object({
   dueDate: z.string().nullable(),
   typeId: z.string().nullable(),
   fields: z.record(z.string(), z.unknown()),
+  // MM:SS as typed; null keeps the type's own timer.
+  duration: z.string().nullable(),
+  // Kept as typed, so the field can be cleared and retyped; read through `repeatCount`.
+  repeatText: z.string(),
+  gapTitle: z.string(),
+  gapDuration: z.string(),
+  gapTypeId: z.string().nullable(),
+  // Created as done: how long it took and when it ended, logged as typed-in time.
+  took: z.string(),
+  when: z.object({ date: z.string(), time: z.string() }).nullable(),
 })
+
+type TypeOption = {
+  id: string
+  name: string
+  color: TypeColor
+  icon: string | null
+  timer: TimerConfig | null
+}
 
 const fieldsOpenAtom = atom(true)
 
@@ -69,17 +116,163 @@ const chipClassName =
 
 const emptyChipClassName = "border-dashed text-muted-foreground"
 
+const selectAll = (event: React.FocusEvent<HTMLInputElement>) =>
+  event.currentTarget.select()
+
+function TypeGlyph({ type }: { type: TypeOption | null }) {
+  return type?.icon ? (
+    <StoredIcon
+      value={type.icon}
+      className="size-3.5"
+      fallback={<TypeIcon color={type.color} />}
+    />
+  ) : (
+    <TypeIcon color={type?.color ?? null} />
+  )
+}
+
+type RepeatDraft = {
+  repeatText: string
+  gapTitle: string
+  gapDuration: string
+  gapTypeId: string | null
+}
+
+// Repeats are their own activities, numbered after the title, with an optional one between
+// each: four rounds of scales with a short rest, or three passes over a checklist.
+function RepeatChip({
+  draft,
+  types,
+  workspaceId,
+  onChange,
+}: {
+  draft: RepeatDraft
+  types: TypeOption[]
+  workspaceId: string
+  onChange: (patch: Partial<RepeatDraft>) => void
+}) {
+  const repeat = repeatCount(draft.repeatText)
+  const gapType = types.find((type) => type.id === draft.gapTypeId) ?? null
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={
+          <Button
+            type="button"
+            variant="outline"
+            className={cn(chipClassName, repeat <= 1 && emptyChipClassName)}
+            aria-label="Repeat"
+          />
+        }
+      >
+        <Repeat data-icon="inline-start" />
+        {repeatLabel(repeat, {
+          title: draft.gapTitle,
+          duration: draft.gapDuration,
+          typeId: draft.gapTypeId,
+          typeName: gapType?.name ?? null,
+        })}
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-72 gap-2.5 p-3">
+        <div className="flex items-center justify-between gap-2 text-sm">
+          <label htmlFor="repeat-times">Times</label>
+          <span className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="size-8 max-md:size-11"
+              aria-label="One fewer"
+              disabled={repeat <= 1}
+              onClick={() => onChange({ repeatText: String(repeat - 1) })}
+            >
+              <Minus />
+            </Button>
+            <Input
+              id="repeat-times"
+              value={draft.repeatText}
+              inputMode="numeric"
+              onFocus={selectAll}
+              onChange={(event) =>
+                onChange({ repeatText: event.target.value.replace(/\D/g, "") })
+              }
+              onBlur={() => onChange({ repeatText: String(repeat) })}
+              className="h-8 w-12 text-center tabular-nums max-md:h-11"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="size-8 max-md:size-11"
+              aria-label="One more"
+              disabled={repeat >= MAX_REPEAT}
+              onClick={() => onChange({ repeatText: String(repeat + 1) })}
+            >
+              <Plus />
+            </Button>
+          </span>
+        </div>
+        <span className="border-t pt-2.5 text-xs text-muted-foreground">
+          Between each (optional)
+        </span>
+        <div className="flex gap-1.5">
+          <Input
+            value={draft.gapTitle}
+            onChange={(event) => onChange({ gapTitle: event.target.value })}
+            onFocus={selectAll}
+            placeholder="Name"
+            aria-label="Name of the one between repeats"
+            className="h-8 min-w-0 flex-1 max-md:h-11"
+          />
+          <DurationChip
+            value={draft.gapDuration}
+            label="Duration between repeats"
+            zeroLabel=""
+            className="h-8 px-2 max-md:h-11"
+            onChange={(gapDuration) => onChange({ gapDuration })}
+          />
+          <TypeMenu
+            types={types}
+            value={draft.gapTypeId}
+            workspaceId={workspaceId}
+            onChange={(gapTypeId) => onChange({ gapTypeId })}
+            trigger={
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="size-8 shrink-0 max-md:size-11"
+                aria-label={`Type between: ${gapType?.name ?? "None"}`}
+                title={gapType?.name ?? "Type"}
+              >
+                <TypeGlyph type={gapType} />
+              </Button>
+            }
+          />
+        </div>
+        <span className="text-xs text-muted-foreground">
+          Each repeat is its own activity, numbered after the title, with the
+          one between in its own row.
+        </span>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
 // The dialog creates one activity at a time; the inline form, under a parent's
 // sub-activities, stays open for the next one, as in Linear.
 function NewActivityForm({
   workspace,
   request,
   variant,
+  notice = null,
   onClose,
 }: {
   workspace: NewActivityWorkspace
   request: NewActivityRequest
   variant: "dialog" | "inline"
+  // A warning about what adding sub-activities changes on the parent.
+  notice?: string | null
   onClose: () => void
 }) {
   const inline = variant === "inline"
@@ -90,6 +283,7 @@ function NewActivityForm({
   const { data: types } = useQuery(activityTypesQuery(workspace.id))
   const [fieldsOpen, setFieldsOpen] = useAtom(fieldsOpenAtom)
   const createActivities = useCreateActivities(workspace.id)
+  const addSeries = useAddSeries(workspace.id)
   const titleRef = useRef<HTMLInputElement>(null)
 
   const announceCreated = (created: { id: string; key: string }) =>
@@ -114,6 +308,13 @@ function NewActivityForm({
       dueDate: null as string | null,
       typeId: request.typeId,
       fields: noFieldValues,
+      duration: null as string | null,
+      repeatText: "1",
+      gapTitle: "",
+      gapDuration: EMPTY,
+      gapTypeId: null as string | null,
+      took: EMPTY,
+      when: null as z.infer<typeof newActivitySchema>["when"],
     },
     validators: {
       onSubmit: newActivitySchema,
@@ -134,15 +335,19 @@ function NewActivityForm({
             form: `Fix ${invalid.map((field) => field.name).join(", ")} before creating the activity.`,
           }
         }
+        // Checked before anything is created, so a bad Took never leaves a half-made activity.
+        const at = parseUtc(now())
+        const sessions =
+          typed.status === "done"
+            ? backToBack(
+                [{ activityId: "", seconds: valueToSeconds(typed.took) }],
+                endOf(typed.when, workspace.timezone, at)
+              )
+            : []
+        const problem = logProblem(sessions, at)
+        if (problem) return { form: problem }
         try {
-          const [created] = await createActivities.mutateAsync([
-            {
-              id: crypto.randomUUID(),
-              origin: null,
-              parentId: request.parent?.id ?? null,
-              ...typed,
-            },
-          ])
+          const created = await create(typed, sessions)
           if (created && !inline) announceCreated(created)
         } catch (error) {
           return {
@@ -161,12 +366,117 @@ function NewActivityForm({
         return
       }
       form.reset(
-        { ...value, title: "", notes: "", fields: {} },
+        {
+          ...value,
+          title: "",
+          notes: "",
+          fields: {},
+          duration: null,
+          repeatText: "1",
+          gapTitle: "",
+          gapDuration: EMPTY,
+          gapTypeId: null,
+          took: EMPTY,
+          when: null,
+        },
         { keepDefaultValues: true }
       )
       titleRef.current?.focus()
     },
   })
+
+  // One activity, or a series of repeats under the parent or a new activity that holds
+  // them. Time typed in is saved in the same write.
+  const create = async (
+    value: z.infer<typeof newActivitySchema>,
+    sessions: LoggedSession[]
+  ) => {
+    const spans = sessions.map(({ startedAt, endedAt }) => ({
+      startedAt,
+      endedAt,
+    }))
+    const loggedOn = (activityId: string) =>
+      spans.map((span) => ({ ...span, activityId }))
+    const type = types?.find((candidate) => candidate.id === value.typeId)
+    const gapType = types?.find((candidate) => candidate.id === value.gapTypeId)
+    const sound = type?.timer?.sound ?? "none"
+    const timer =
+      value.duration === null ? null : timerFrom(value.duration, sound)
+    const steps = seriesSteps({
+      title: value.title.trim(),
+      timer,
+      typeId: value.typeId,
+      repeat: repeatCount(value.repeatText),
+      gap: {
+        title: value.gapTitle,
+        duration: value.gapDuration,
+        typeId: gapType?.id ?? null,
+        typeName: gapType?.name ?? null,
+      },
+      sound,
+    })
+    const own = {
+      origin: null,
+      areaId: value.areaId,
+      goalId: value.goalId,
+      title: value.title,
+      notes: value.notes,
+      status: value.status,
+      dueDate: value.dueDate,
+      typeId: value.typeId,
+      fields: value.fields,
+    }
+    if (steps.length === 1) {
+      const id = crypto.randomUUID()
+      const [created] = await createActivities.mutateAsync({
+        activities: [
+          { ...own, id, parentId: request.parent?.id ?? null, timer },
+        ],
+        logged: loggedOn(id),
+      })
+      return created
+    }
+    const repeats = steps.map((step): NewActivity => {
+      const gap = step.generated === "gap"
+      return {
+        id: crypto.randomUUID(),
+        origin: null,
+        areaId: value.areaId,
+        goalId: value.goalId,
+        title: step.title,
+        typeId: step.typeId,
+        timer: step.timer,
+        generated: step.generated,
+        status: stepStatus(step, value.status),
+        dueDate: gap ? null : value.dueDate,
+        fields: gap ? {} : value.fields,
+        notes: gap || !request.parent ? "" : value.notes,
+      }
+    })
+    // The holder is the routine's top, which carries its one sound.
+    const holder = {
+      ...own,
+      id: crypto.randomUUID(),
+      timer: { mode: "up" as const, sound },
+    }
+    if (request.parent) {
+      const [created] = await addSeries.mutateAsync({
+        parentId: request.parent.id,
+        holder,
+        repeats,
+        logged: spans,
+      })
+      return created
+    }
+    const [created] = await createActivities.mutateAsync({
+      activities: [
+        { ...holder, parentId: null, series: true },
+        ...repeats.map((repeat) => ({ ...repeat, parentId: holder.id })),
+      ],
+      logged: loggedOn(holder.id),
+    })
+    return created
+  }
 
   const submit = () => void form.handleSubmit()
 
@@ -239,6 +549,12 @@ function NewActivityForm({
           </>
         )}
 
+        {notice ? (
+          <p className="mx-5 mt-3.5 flex items-start gap-2 rounded-md bg-warning-bg px-3 py-2 text-xs text-warning-text">
+            <TriangleAlert aria-hidden className="mt-px size-3.5 shrink-0" />
+            <span>{notice}</span>
+          </p>
+        ) : null}
         <div
           className={cn(
             "flex flex-col gap-1.5 px-5 pb-1",
@@ -327,7 +643,7 @@ function NewActivityForm({
                       aria-label={`Type: ${type?.name ?? "None"}`}
                     >
                       <span data-icon="inline-start" className="flex">
-                        <TypeIcon color={type?.color ?? null} />
+                        <TypeGlyph type={type ?? null} />
                       </span>
                       {type?.name ?? "Type"}
                     </Button>
@@ -453,7 +769,89 @@ function NewActivityForm({
               />
             )}
           </form.Field>
+          <form.Subscribe
+            selector={(state) =>
+              [state.values.typeId, state.values.duration] as const
+            }
+          >
+            {([typeId, duration]) => {
+              const typeTimer =
+                types?.find((candidate) => candidate.id === typeId)?.timer ??
+                null
+              return (
+                <DurationChip
+                  value={
+                    duration ??
+                    (typeTimer?.mode === "down"
+                      ? secondsToValue(typeTimer.seconds)
+                      : EMPTY)
+                  }
+                  label="Timer duration"
+                  zeroLabel="stopwatch"
+                  downLabel="countdown"
+                  onChange={(next) => form.setFieldValue("duration", next)}
+                />
+              )
+            }}
+          </form.Subscribe>
+          <form.Subscribe
+            selector={(state) => ({
+              repeatText: state.values.repeatText,
+              gapTitle: state.values.gapTitle,
+              gapDuration: state.values.gapDuration,
+              gapTypeId: state.values.gapTypeId,
+            })}
+          >
+            {(draft) => (
+              <RepeatChip
+                draft={draft}
+                types={types ?? []}
+                workspaceId={workspace.id}
+                onChange={(patch) => {
+                  if (patch.repeatText !== undefined) {
+                    form.setFieldValue("repeatText", patch.repeatText)
+                  }
+                  if (patch.gapTitle !== undefined) {
+                    form.setFieldValue("gapTitle", patch.gapTitle)
+                  }
+                  if (patch.gapDuration !== undefined) {
+                    form.setFieldValue("gapDuration", patch.gapDuration)
+                  }
+                  if (patch.gapTypeId !== undefined) {
+                    form.setFieldValue("gapTypeId", patch.gapTypeId)
+                  }
+                }}
+              />
+            )}
+          </form.Subscribe>
         </div>
+
+        <form.Subscribe
+          selector={(state) =>
+            [state.values.status, state.values.took, state.values.when] as const
+          }
+        >
+          {([status, took, when]) =>
+            status === "done" ? (
+              <div className="-mt-1.5 flex flex-wrap items-center gap-1.5 px-5 pb-3.5 text-xs text-muted-foreground">
+                <span>Took</span>
+                <DurationChip
+                  value={took}
+                  label="How long it took"
+                  zeroLabel="optional"
+                  title="Type how long it took over 00:00; leave it to just mark it done"
+                  onChange={(next) => form.setFieldValue("took", next)}
+                />
+                <span>ended</span>
+                <WhenField
+                  value={when}
+                  timezone={workspace.timezone}
+                  onChange={(next) => form.setFieldValue("when", next)}
+                />
+              </div>
+            ) : null
+          }
+        </form.Subscribe>
 
         <form.Subscribe selector={(state) => state.values.typeId}>
           {(typeId) => {
@@ -556,15 +954,22 @@ function NewActivityForm({
             >
               Cancel
             </Button>
-            <form.Subscribe selector={(state) => state.isSubmitting}>
-              {(isSubmitting) => (
+            <form.Subscribe
+              selector={(state) =>
+                [
+                  state.isSubmitting,
+                  repeatCount(state.values.repeatText),
+                ] as const
+              }
+            >
+              {([isSubmitting, repeat]) => (
                 <Button
                   type="submit"
                   variant="secondary"
                   disabled={isSubmitting}
                   className="max-md:h-11"
                 >
-                  Create
+                  {repeat > 1 ? `Create ${repeat}` : "Create"}
                 </Button>
               )}
             </form.Subscribe>

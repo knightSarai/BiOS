@@ -31,7 +31,7 @@ import {
   ChangeTypeDialog,
 } from "./-components/ActivityTypeFields"
 import { ActivityCrumb } from "./-components/ActivityCrumb"
-import { ActivityTimer } from "./-components/ActivityTimer"
+import { PhoneTimer, TimerAside } from "./-components/ActivityRoutine"
 import { ParentDialog } from "./-components/ParentDialog"
 import { ParentHeader, SubActivities } from "./-components/SubActivities"
 
@@ -141,15 +141,15 @@ function ActivityPage() {
                       activity={activity}
                       workspace={propertiesWorkspace}
                     />
+                    <PhoneTimer
+                      workspaceId={workspace.id}
+                      activityId={activityId}
+                      timezone={workspace.settings.timezone}
+                    />
                     <ActivityFields
                       activity={activity}
                       workspace={propertiesWorkspace}
                       className="mb-6"
-                    />
-                    <ActivityTimer
-                      activity={activity}
-                      workspace={propertiesWorkspace}
-                      className="mb-6 rounded-lg border py-3"
                     />
                   </div>
                 </>
@@ -167,18 +167,14 @@ function ActivityPage() {
               className="border-t pt-4 lg:hidden"
             />
           </div>
-          <aside
-            aria-label="Activity properties"
-            className="flex w-64 shrink-0 flex-col gap-6 pb-16 max-lg:hidden lg:sticky lg:top-14 lg:max-h-[calc(100dvh-7rem)] lg:self-start lg:overflow-y-auto"
+          <TimerAside
+            workspaceId={workspace.id}
+            activityId={activityId}
+            timezone={workspace.settings.timezone}
           >
             <ActivityProperties
               activity={activity}
               workspace={propertiesWorkspace}
-            />
-            <ActivityTimer
-              activity={activity}
-              workspace={propertiesWorkspace}
-              className="border-t pt-4"
             />
             <ActivityFields
               activity={activity}
@@ -190,7 +186,7 @@ function ActivityPage() {
               workspace={documentsWorkspace}
               className="border-t pt-4"
             />
-          </aside>
+          </TimerAside>
         </div>
       </Page.ScrollArea>
       <ChangeTypeDialog workspaceId={workspace.id} />

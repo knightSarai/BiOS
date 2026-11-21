@@ -1,15 +1,17 @@
 import "fake-indexeddb/auto"
-import { afterEach, describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { parseUtc } from "@knight-os/server/core"
-import { timerLaps } from "@/activities/timer"
+import { logPlan } from "@/activities/log-time"
+import type { RoutineNode } from "@/activities/routine"
 import { ActivitiesRepository } from "./activities"
 import { AreasRepository } from "./areas"
 import { createLocalDb, type LocalDb } from "./db"
-import { TimeEntriesRepository } from "./time-entries"
+import { InvalidLogError, TimeEntriesRepository } from "./time-entries"
 
 const openDbs: LocalDb[] = []
 
 afterEach(async () => {
+  vi.useRealTimers()
   await Promise.all(openDbs.splice(0).map((db) => db.delete()))
 })
 
@@ -31,107 +33,154 @@ const setup = async (workspaceId = "ws-1") => {
 }
 
 describe("TimeEntriesRepository", () => {
-  it("runs one timer at a time, stopping the other when a new one starts", async () => {
+  it("logs time typed in afterwards as manual entries, several at once", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date("2026-11-11T09:00:00.000Z"))
     const { entries, create } = await setup()
-    const run = await create("Run")
-    const spar = await create("Spar")
+    const warmUp = await create("Warm-up")
+    const bench = await create("Bench press")
+    const at = (time: string) => parseUtc(`2026-11-01T${time}.000Z`)
 
-    await entries.start(run)
-    await entries.start(spar)
+    await entries.log([
+      {
+        activityId: warmUp,
+        startedAt: at("09:00:00"),
+        endedAt: at("09:10:00"),
+      },
+      { activityId: bench, startedAt: at("09:10:00"), endedAt: at("09:35:00") },
+    ])
 
-    const [runEntry] = await entries.list(run)
-    expect(runEntry?.endedAt).not.toBeNull()
-    expect((await entries.running())?.activityId).toBe(spar)
-  })
-
-  it("does not open a second entry when the same timer starts twice", async () => {
-    const { entries, create } = await setup()
-    const run = await create("Run")
-    await entries.start(run)
-    await entries.start(run)
-    expect(await entries.list(run)).toHaveLength(1)
-  })
-
-  it("never ends an entry before it started", async () => {
-    const { entries, create } = await setup()
-    const run = await create("Run")
-    const started = await entries.start(run)
-    await entries.stop(run, parseUtc("2000-01-01T00:00:00.000Z"))
-    const [entry] = await entries.list(run)
-    expect(entry?.endedAt).toBe(started.startedAt)
-  })
-
-  it("records a lap by closing the running entry and opening the next at the same moment", async () => {
-    const { entries, create } = await setup()
-    const run = await create("Run")
-    const started = await entries.start(run)
-    const lappedAt = parseUtc("2100-01-01T00:00:00.000Z")
-
-    const next = await entries.lap(run, lappedAt)
-
-    const [lapped, running] = await entries.list(run)
-    expect(lapped).toMatchObject({
-      id: started.id,
-      endedAt: lappedAt,
-      endsLap: true,
-    })
-    expect(running).toMatchObject({
-      id: next?.id,
-      startedAt: lappedAt,
-      endedAt: null,
-    })
-    expect(timerLaps(await entries.list(run))).toHaveLength(1)
-  })
-
-  it("records no lap while the timer is paused, or twice at the same moment", async () => {
-    const { entries, create } = await setup()
-    const run = await create("Run")
+    expect(await entries.list(warmUp)).toEqual([
+      expect.objectContaining({
+        startedAt: at("09:00:00"),
+        endedAt: at("09:10:00"),
+        source: "manual",
+      }),
+    ])
+    const [typed] = await entries.list(warmUp)
+    expect(typed?.source === "manual" && typed.loggedAt).toBe(
+      "2026-11-11T09:00:00.000Z"
+    )
     expect(
-      await entries.lap(run, parseUtc("2100-01-01T00:00:00.000Z"))
-    ).toBeNull()
-
-    const started = await entries.start(run)
-    expect(await entries.lap(run, started.startedAt)).toBeNull()
-    expect(await entries.list(run)).toHaveLength(1)
+      (await entries.list(bench)).map((entry) => [
+        entry.startedAt,
+        entry.endedAt,
+      ])
+    ).toEqual([[at("09:10:00"), at("09:35:00")]])
   })
 
-  it("brings laps back when a reset is undone", async () => {
+  it("refuses a logged session that is empty, over 24 hours or in the future", async () => {
     const { entries, create } = await setup()
     const run = await create("Run")
-    await entries.start(run)
-    await entries.lap(run, parseUtc("2100-01-01T00:00:00.000Z"))
-    await entries.stop(run, parseUtc("2100-01-01T00:01:00.000Z"))
+    const start = parseUtc("2026-11-01T09:00:00.000Z")
+    const refuse = (endedAt: string) =>
+      expect(
+        entries.log([
+          { activityId: run, startedAt: start, endedAt: parseUtc(endedAt) },
+        ])
+      ).rejects.toThrow(InvalidLogError)
 
-    const cleared = await entries.clear(run)
-    expect(timerLaps(await entries.list(run))).toEqual([])
-    await entries.restore(cleared)
-    expect(timerLaps(await entries.list(run))).toHaveLength(1)
-  })
-
-  it("clears an activity's entries and restores them", async () => {
-    const { entries, create } = await setup()
-    const run = await create("Run")
-    await entries.start(run)
-    await entries.stop(run, parseUtc("2100-01-01T00:00:00.000Z"))
-
-    const cleared = await entries.clear(run)
+    await refuse("2026-11-01T09:00:00.000Z")
+    await refuse("2026-11-02T09:00:01.000Z")
+    await expect(
+      entries.log([
+        {
+          activityId: run,
+          startedAt: parseUtc("2100-01-01T00:00:00.000Z"),
+          endedAt: parseUtc("2100-01-01T01:00:00.000Z"),
+        },
+      ])
+    ).rejects.toThrow(InvalidLogError)
     expect(await entries.list(run)).toEqual([])
-    await entries.restore(cleared)
-    expect(await entries.list(run)).toEqual(cleared)
   })
 
-  it("won't time another workspace's activity", async () => {
+  it("refuses a Log time whose When is later today as in the future", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    // 20:00 in Sydney.
+    vi.setSystemTime(new Date("2026-11-11T09:00:00.000Z"))
+    const { entries, create } = await setup()
+    const read = await create("Read")
+    const node: RoutineNode = {
+      id: read,
+      title: "Read",
+      timer: { mode: "up", sound: "none" },
+      typeId: null,
+      generated: null,
+      series: false,
+      children: [],
+    }
+    const plan = logPlan(
+      node,
+      {
+        entries: [],
+        cursor: null,
+        passed: [],
+        done: [],
+        canceled: [],
+        replay: [],
+        scopeId: null,
+        runStart: 0,
+        attemptFrom: {},
+        joinedAt: {},
+        started: false,
+      },
+      node,
+      {
+        split: false,
+        took: "30:00",
+        parts: {},
+        when: { date: "2026-11-11", time: "21:00" },
+        done: false,
+      },
+      "Australia/Sydney",
+      parseUtc("2026-11-11T09:00:00.000Z")
+    )
+    if ("error" in plan) throw new Error(plan.error)
+    await expect(entries.log(plan.sessions)).rejects.toThrow(
+      "A logged session can't end in the future."
+    )
+    expect(await entries.list(read)).toEqual([])
+  })
+
+  it("saves none of a split log when one activity is missing", async () => {
+    const { entries, create } = await setup()
+    const run = await create("Run")
+    const start = parseUtc("2026-11-01T09:00:00.000Z")
+    const end = parseUtc("2026-11-01T09:30:00.000Z")
+    await expect(
+      entries.log([
+        { activityId: run, startedAt: start, endedAt: end },
+        { activityId: "missing", startedAt: start, endedAt: end },
+      ])
+    ).rejects.toThrow(InvalidLogError)
+    expect(await entries.list(run)).toEqual([])
+  })
+
+  it("won't log time on another workspace's activity", async () => {
     const { db, create } = await setup()
     const run = await create("Run")
     const other = new TimeEntriesRepository(db, { workspaceId: "ws-2" })
-    await expect(other.start(run)).rejects.toThrow()
+    await expect(
+      other.log([
+        {
+          activityId: run,
+          startedAt: parseUtc("2026-11-01T09:00:00.000Z"),
+          endedAt: parseUtc("2026-11-01T09:30:00.000Z"),
+        },
+      ])
+    ).rejects.toThrow(InvalidLogError)
   })
 
   it("deletes an activity's entries with it and brings them back on restore", async () => {
     const { activities, entries, create } = await setup()
     const run = await create("Run")
-    await entries.start(run)
-    await entries.stop(run, parseUtc("2100-01-01T00:00:00.000Z"))
+    await entries.log([
+      {
+        activityId: run,
+        startedAt: parseUtc("2026-11-01T09:00:00.000Z"),
+        endedAt: parseUtc("2026-11-01T09:30:00.000Z"),
+      },
+    ])
     const logged = await entries.list(run)
 
     const snapshot = await activities.delete(run)
@@ -142,9 +191,16 @@ describe("TimeEntriesRepository", () => {
   })
 
   it("closes a running timer when its activity is deleted, so undo doesn't count the gap", async () => {
-    const { activities, entries, create } = await setup()
+    const { db, activities, entries, create } = await setup()
     const run = await create("Run")
-    await entries.start(run)
+    await db.timeEntries.add({
+      id: crypto.randomUUID(),
+      workspaceId: "ws-1",
+      activityId: run,
+      startedAt: parseUtc("2026-11-01T09:00:00.000Z"),
+      endedAt: null,
+      source: "timer",
+    })
     const snapshot = await activities.delete(run)
     if (!snapshot) throw new Error("Expected a snapshot")
     expect(snapshot.timeEntries[0]?.endedAt).not.toBeNull()

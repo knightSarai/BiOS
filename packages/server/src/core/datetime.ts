@@ -67,8 +67,11 @@ export const now = (): Date => dayjs.utc().toDate()
 export const utcPlusSeconds = (seconds: number) =>
   parseUtc(dayjs.utc().add(seconds, "second").toDate())
 
+// Rounded to the millisecond: a Date would truncate, landing a float sum a millisecond early.
 export const addSeconds = (instant: UtcDatetime, seconds: number) =>
-  parseUtc(dayjs.utc(instant).add(seconds * 1000, "millisecond").toDate())
+  parseUtc(
+    dayjs.utc(instant).add(Math.round(seconds * 1000), "millisecond").toDate()
+  )
 
 export const secondsBetween = (start: UtcDatetime, end: UtcDatetime) =>
   dayjs.utc(end).diff(dayjs.utc(start), "millisecond") / 1000
@@ -96,6 +99,38 @@ export const endOfDayUtc = (date: string, timezone: string): Date =>
 
 export const toLocalDate = (instant: ConfigType, timezone: string): string =>
   dayjs.utc(instant).tz(timezone).format("YYYY-MM-DD")
+
+const offsetMinutesAt = (instant: number, timezone: string) =>
+  dayjs.utc(instant).tz(timezone).utcOffset()
+
+// A wall-clock time in a timezone, as the instant it names. A time the clocks skip reads an
+// hour later; one they repeat reads as its standard-time occurrence. dayjs.tz guesses the
+// offset from the system's current one, which makes repeated times depend on today's date,
+// so the offsets either side of the day are tried instead.
+export const localDateTimeToUtc = (
+  date: string,
+  time: string,
+  timezone: string,
+): UtcDatetime => {
+  const wallClock = dayjs.utc(`${date} ${time}`, "YYYY-MM-DD HH:mm").valueOf()
+  const day = 24 * 60 * 60 * 1000
+  const offsets = [
+    ...new Set(
+      [wallClock - day, wallClock, wallClock + day].map((instant) =>
+        offsetMinutesAt(instant, timezone),
+      ),
+    ),
+  ].sort((a, b) => a - b)
+  const instantFor = (offset: number) => wallClock - offset * 60 * 1000
+  const standard = offsets[0] ?? 0
+  const valid = offsets.find(
+    (offset) => offsetMinutesAt(instantFor(offset), timezone) === offset,
+  )
+  return parseUtc(dayjs.utc(instantFor(valid ?? standard)).toDate())
+}
+
+export const toLocalTime = (instant: ConfigType, timezone: string): string =>
+  dayjs.utc(instant).tz(timezone).format("HH:mm")
 
 export const sameInstant = (a: ConfigType, b: ConfigType): boolean =>
   dayjs(a).isSame(dayjs(b))

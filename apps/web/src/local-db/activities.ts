@@ -1,5 +1,11 @@
 import * as Y from "yjs"
-import { addSeconds, isCivilDate, now, parseUtc } from "@knight-os/server/core"
+import {
+  addSeconds,
+  isCivilDate,
+  now,
+  parseUtc,
+  type UtcDatetime,
+} from "@knight-os/server/core"
 import { activityKey } from "@/activities/areas"
 import { byCreation } from "@/activities/sub-activities"
 import {
@@ -9,16 +15,24 @@ import {
   setFieldValue,
 } from "@/activities/fields"
 import { isOpenStatus, type ActivityStatus } from "@/activities/status"
-import { parseTimerConfig, type TimerConfig } from "@/activities/timer"
+import {
+  parseTimerConfig,
+  type TimerConfig,
+  type TimerSound,
+} from "@/activities/timer"
 import { DOCUMENT_FRAGMENT } from "@/editor/document-content"
 import { compareSortKeys } from "@/notebook/sort-keys"
 import type {
   ActivityOrigin,
   ActivityRow,
+  GeneratedKind,
   LocalDb,
   MentionRow,
+  RoutineRunRow,
   TimeEntryRow,
 } from "./db"
+import { RoutinesRepository } from "./routines"
+import { TimeEntriesRepository, type LoggedSession } from "./time-entries"
 import {
   contentUpdatesTable,
   contentWritesSettled,
@@ -36,6 +50,7 @@ type DeletedActivity = {
   contentUpdates: ContentUpdate[]
   timeEntries: TimeEntryRow[]
   childIds: string[]
+  run: RoutineRunRow | null
 }
 
 type NewActivity = {
@@ -51,7 +66,13 @@ type NewActivity = {
   status: ActivityStatus
   origin: ActivityOrigin | null
   timer?: TimerConfig | null
+  generated?: GeneratedKind | null
+  series?: boolean
 }
+
+type SeriesHolder = Omit<NewActivity, "parentId" | "generated" | "series">
+
+type LoggedSpan = Omit<LoggedSession, "activityId">
 
 type CopyPlan = {
   source: ActivityRow
@@ -60,6 +81,20 @@ type CopyPlan = {
 }
 
 class InvalidParentError extends Error {}
+
+const latestEnd = (sessions: { endedAt: UtcDatetime }[]) =>
+  sessions.reduce<UtcDatetime | null>(
+    (latest, session) =>
+      latest === null || session.endedAt > latest ? session.endedAt : latest,
+    null
+  )
+
+const outsideParents = (created: NewActivity[]) => {
+  const ids = new Set(created.map((activity) => activity.id))
+  return created.flatMap((activity) =>
+    activity.parentId && !ids.has(activity.parentId) ? [activity.parentId] : []
+  )
+}
 
 const requireDueDate = (dueDate: string | null) => {
   if (dueDate !== null && !isCivilDate(dueDate)) {
@@ -77,12 +112,18 @@ const elementsNamed = (ydoc: Y.Doc, nodeName: string) =>
       ),
   ].filter((node) => node instanceof Y.XmlElement)
 
-const statusChange = (row: ActivityRow, status: ActivityStatus) => {
+// `completedAt` is when it was really finished, which a late hand-over write knows better
+// than the clock.
+const statusChange = (
+  row: ActivityRow,
+  status: ActivityStatus,
+  completedAt: UtcDatetime | null = null
+) => {
   const timestamp = parseUtc(now())
   return {
     status,
     reopenStatus: isOpenStatus(row.status) ? row.status : row.reopenStatus,
-    completedAt: status === "done" ? timestamp : null,
+    completedAt: status === "done" ? (completedAt ?? timestamp) : null,
     updatedAt: timestamp,
   }
 }
@@ -249,10 +290,151 @@ class ActivitiesRepository {
     return counts
   }
 
-  async createMany(activities: NewActivity[]) {
-    const created = await this.insertMany(activities)
+  private routineTables() {
+    return [
+      this.db.areas,
+      this.db.activities,
+      this.db.activityTypes,
+      this.db.activityTypeFields,
+      this.db.timeEntries,
+      this.db.routineRuns,
+    ]
+  }
+
+  private withTimeEntries<T>(write: () => Promise<T>) {
+    return this.db.transaction("rw", this.routineTables(), write)
+  }
+
+  // Done with time typed in was finished when that time ended, not when it was saved.
+  private async completeAt(ids: string[], ended: UtcDatetime | null) {
+    if (ended === null) return
+    await this.db.activities
+      .where("id")
+      .anyOf(ids)
+      .filter(
+        (row) =>
+          row.workspaceId === this.ctx.workspaceId && row.status === "done"
+      )
+      .modify({ completedAt: ended })
+  }
+
+  // Time typed in with the activities saves with them or not at all.
+  async createMany(activities: NewActivity[], logged: LoggedSession[] = []) {
+    const created = await this.withTimeEntries(async () => {
+      const rows = await this.insertMany(activities)
+      if (logged.length > 0) {
+        await new TimeEntriesRepository(this.db, this.ctx).log(logged)
+        await this.completeAt(
+          activities.map((activity) => activity.id),
+          latestEnd(logged)
+        )
+      }
+      return rows
+    })
     await this.seedContents(activities)
     return created
+  }
+
+  // Repeats under an empty parent make it a series. A parent that already has
+  // sub-activities keeps them, and the repeats go under a new `holder` among them. Time
+  // typed in goes on whichever holds the repeats.
+  async addSeries(
+    parentId: string,
+    holder: SeriesHolder,
+    repeats: NewActivity[],
+    logged: LoggedSpan[] = []
+  ) {
+    const { created, nested } = await this.withTimeEntries(async () => {
+      if (!(await this.byId(parentId))) {
+        throw new InvalidParentError("That parent activity doesn't exist.")
+      }
+      const nested = (await this.children(parentId)).length > 0
+      const seriesId = nested ? holder.id : parentId
+      const inserted = [
+        ...(nested ? [{ ...holder, parentId, series: true }] : []),
+        ...repeats.map((repeat) => ({ ...repeat, parentId: seriesId })),
+      ]
+      const created = await this.insertMany(inserted)
+      if (!nested) {
+        await this.db.activities.update(parentId, {
+          series: true,
+          updatedAt: parseUtc(now()),
+        })
+      }
+      if (logged.length > 0) {
+        await new TimeEntriesRepository(this.db, this.ctx).log(
+          logged.map((span) => ({ ...span, activityId: seriesId }))
+        )
+        await this.completeAt(
+          inserted.map((activity) => activity.id),
+          latestEnd(logged)
+        )
+      }
+      return { created, nested }
+    })
+    // A new holder carries the notes; its repeats don't repeat them.
+    await this.seedContents(
+      nested
+        ? [holder, ...repeats.map((repeat) => ({ ...repeat, notes: "" }))]
+        : repeats
+    )
+    return created
+  }
+
+  // "Done" ticks what was logged in the same write, so neither lands without the other. A
+  // group in between is ticked once everything in it is closed, dated by what was logged in it.
+  logTime(sessions: LoggedSession[], done: string[], groups: string[] = []) {
+    return this.withTimeEntries(async () => {
+      const rows = await new TimeEntriesRepository(this.db, this.ctx).log(
+        sessions
+      )
+      for (const id of done) {
+        if ((await this.byId(id))?.status === "canceled") continue
+        const own = sessions.filter((session) => session.activityId === id)
+        await this.routines().setStatus(
+          id,
+          "done",
+          latestEnd(own.length > 0 ? own : sessions)
+        )
+      }
+      for (const id of groups) {
+        if ((await this.byId(id))?.status === "canceled") continue
+        const inside = await this.leafIds(id)
+        if (!(await this.allClosed(id))) continue
+        const own = sessions.filter((session) =>
+          inside.includes(session.activityId)
+        )
+        await this.routines().setStatus(
+          id,
+          "done",
+          latestEnd(own.length > 0 ? own : sessions)
+        )
+      }
+      return rows
+    })
+  }
+
+  private async leafIds(id: string): Promise<string[]> {
+    const children = await this.children(id)
+    if (children.length === 0) return [id]
+    const nested = await Promise.all(
+      children.map((child) => this.leafIds(child.id))
+    )
+    return nested.flat()
+  }
+
+  // A canceled group closes what's inside it, whatever their own status says.
+  private async allClosed(id: string): Promise<boolean> {
+    const children = await this.children(id)
+    if (children.length === 0) {
+      const row = await this.byId(id)
+      return row !== null && !isOpenStatus(row.status)
+    }
+    for (const child of children) {
+      if (child.status === "canceled") continue
+      if (!(await this.allClosed(child.id))) return false
+    }
+    return true
   }
 
   async seedContents(
@@ -282,10 +464,15 @@ class ActivitiesRepository {
     const updates = this.contentUpdatesTable()
     return this.db.transaction(
       "rw",
-      [this.db.activities, this.db.timeEntries, updates],
+      [...this.routineTables(), updates],
       async (): Promise<DeletedActivity | null> => {
+        if (!(await this.byId(id))) return null
+        await this.routines().catchUp(id)
+        await this.routines().splitOff(id)
+        // Read after the catch-up, which may have ticked it, so undo brings back that tick.
         const row = await this.byId(id)
         if (!row) return null
+        const run = await this.db.routineRuns.get(id)
         const contentUpdates = await updates.where("k").equals(id).toArray()
         const timeEntries = this.db.timeEntries
           .where("[workspaceId+activityId]")
@@ -305,6 +492,11 @@ class ActivitiesRepository {
           .anyOf(childIds)
           .modify({ parentId: null })
         await this.db.activities.delete(id)
+        await this.db.routineRuns
+          .where("id")
+          .equals(id)
+          .filter((each) => each.workspaceId === this.ctx.workspaceId)
+          .delete()
         return {
           row: {
             id: row.id,
@@ -321,6 +513,8 @@ class ActivitiesRepository {
             reopenStatus: row.reopenStatus,
             origin: row.origin,
             timer: row.timer,
+            generated: row.generated,
+            series: row.series,
             createdAt: row.createdAt,
             updatedAt: row.updatedAt,
             completedAt: row.completedAt,
@@ -328,6 +522,7 @@ class ActivitiesRepository {
           contentUpdates: contentUpdates.map(({ k, u, f }) => ({ k, u, f })),
           timeEntries: deletedEntries,
           childIds,
+          run: run?.workspaceId === this.ctx.workspaceId ? run : null,
         }
       }
     )
@@ -338,49 +533,82 @@ class ActivitiesRepository {
     const updates = this.contentUpdatesTable()
     const restored = await this.db.transaction(
       "rw",
-      [
-        this.db.activities,
-        this.db.activityTypes,
-        this.db.activityTypeFields,
-        this.db.timeEntries,
-        updates,
-      ],
+      [...this.routineTables(), updates],
       async () => {
         if (await this.byId(snapshot.row.id)) return false
-        await updates.where("k").equals(snapshot.row.id).delete()
-        const fields = await this.typeFields(snapshot.row.typeId)
         const parentId =
           snapshot.row.parentId !== null &&
           (await this.byId(snapshot.row.parentId))
             ? snapshot.row.parentId
             : null
-        await this.db.activities.add({
-          ...snapshot.row,
-          parentId,
-          fields: keepValidValues(fields, snapshot.row.fields),
-        })
-        await updates.bulkAdd(snapshot.contentUpdates)
-        await this.db.timeEntries.bulkPut(snapshot.timeEntries)
-        // Only children nobody has moved elsewhere since go back under it, and none that
-        // became one of its ancestors meanwhile, which would close a loop.
-        const ancestors = await this.ancestorIds(snapshot.row.id)
-        await this.db.activities
-          .where("id")
-          .anyOf(snapshot.childIds)
-          .filter(
-            (row) =>
-              row.workspaceId === this.ctx.workspaceId &&
-              row.parentId === null &&
-              !ancestors.has(row.id)
-          )
-          .modify({ parentId: snapshot.row.id })
-        return true
+        // A parent that was a leaf playing on its own is timed through what comes back under it.
+        return this.routines().adopt(parentId === null ? [] : [parentId], () =>
+          this.restoreRows(snapshot, parentId)
+        )
       }
     )
     if (restored && snapshot.contentUpdates.length === 0) {
       await this.seedContent(snapshot.row.id, snapshot.row.title)
     }
     return restored
+  }
+
+  private async restoreRows(
+    snapshot: DeletedActivity,
+    parentId: string | null
+  ) {
+    const updates = this.contentUpdatesTable()
+    await updates.where("k").equals(snapshot.row.id).delete()
+    const fields = await this.typeFields(snapshot.row.typeId)
+    await this.db.activities.add({
+      ...snapshot.row,
+      parentId,
+      fields: keepValidValues(fields, snapshot.row.fields),
+    })
+    await updates.bulkAdd(snapshot.contentUpdates)
+    await this.db.timeEntries.bulkPut(snapshot.timeEntries)
+    // Only children nobody has moved elsewhere since go back under it, and none that
+    // became one of its ancestors meanwhile, which would close a loop.
+    const ancestors = await this.ancestorIds(snapshot.row.id)
+    const returning = await this.db.activities
+      .where("id")
+      .anyOf(snapshot.childIds)
+      .filter(
+        (row) =>
+          row.workspaceId === this.ctx.workspaceId &&
+          row.parentId === null &&
+          !ancestors.has(row.id)
+      )
+      .primaryKeys()
+    // Each played on its own meanwhile: a countdown that ran out there stopped there, and
+    // mustn't hand over to a sibling once they're one routine again.
+    for (const id of returning) await this.routines().catchUp(id)
+    await this.db.activities
+      .where("id")
+      .anyOf(returning)
+      .modify({ parentId: snapshot.row.id })
+    if (snapshot.run && parentId === null) await this.restoreRun(snapshot.run)
+    await this.routines().rejoin(returning)
+    return true
+  }
+
+  // Only what is still in the routine comes back; a run row never points at activities
+  // deleted or moved out meanwhile.
+  private async restoreRun(run: RoutineRunRow) {
+    if (await this.db.routineRuns.get(run.id)) return
+    const inside = new Set([run.id, ...(await this.descendantIds(run.id))])
+    const keep = (id: string) => inside.has(id)
+    const pick = <T>(record: Record<string, T>) =>
+      Object.fromEntries(Object.entries(record).filter(([id]) => keep(id)))
+    await this.db.routineRuns.add({
+      ...run,
+      cursor: run.cursor !== null && keep(run.cursor) ? run.cursor : null,
+      scopeId: run.scopeId !== null && keep(run.scopeId) ? run.scopeId : null,
+      passed: run.passed.filter(keep),
+      replay: run.replay.filter(keep),
+      attemptFrom: pick(run.attemptFrom),
+      joinedAt: pick(run.joinedAt),
+    })
   }
 
   private async typeFields(typeId: string | null) {
@@ -396,7 +624,19 @@ class ActivitiesRepository {
     return rows.sort((a, b) => compareSortKeys(a.sortKey, b.sortKey))
   }
 
+  private routines() {
+    return new RoutinesRepository(this.db, this.ctx)
+  }
+
   insertMany(activities: NewActivity[]) {
+    return this.withTimeEntries(() =>
+      this.routines().adopt(outsideParents(activities), () =>
+        this.insertRows(activities)
+      )
+    )
+  }
+
+  insertRows(activities: NewActivity[]) {
     return this.db.transaction(
       "rw",
       [
@@ -447,6 +687,8 @@ class ActivitiesRepository {
               activity.timer === undefined || activity.timer === null
                 ? null
                 : parseTimerConfig(activity.timer),
+            generated: activity.generated ?? null,
+            series: activity.series ?? false,
             createdAt: timestamp,
             updatedAt: timestamp,
             completedAt: activity.status === "done" ? timestamp : null,
@@ -461,17 +703,17 @@ class ActivitiesRepository {
     )
   }
 
-  async setStatus(id: string, status: ActivityStatus) {
-    await this.scoped(id).modify((row) => {
-      Object.assign(row, statusChange(row, status))
-    })
+  setStatus(id: string, status: ActivityStatus) {
+    return this.routines().setStatus(id, status)
   }
 
   async toggleDone(id: string) {
-    await this.scoped(id).modify((row) => {
-      const next = row.status === "done" ? row.reopenStatus : "done"
-      Object.assign(row, statusChange(row, next))
-    })
+    const row = await this.byId(id)
+    if (!row) return
+    await this.routines().setStatus(
+      id,
+      row.status === "done" ? row.reopenStatus : "done"
+    )
   }
 
   moveToArea(id: string, areaId: string) {
@@ -494,10 +736,33 @@ class ActivitiesRepository {
     )
   }
 
-  async setTimer(id: string, timer: TimerConfig | null) {
-    await this.scoped(id).modify({
-      timer: timer === null ? null : parseTimerConfig(timer),
-      updatedAt: parseUtc(now()),
+  setTimer(id: string, timer: TimerConfig | null) {
+    return this.routines().retime(async () => {
+      await this.scoped(id).modify({
+        timer: timer === null ? null : parseTimerConfig(timer),
+        updatedAt: parseUtc(now()),
+      })
+    })
+  }
+
+  // Changes only the sound, so a countdown keeps its time. An activity with no timer of its
+  // own takes its type's, so it's left alone rather than frozen with a copy of that timer;
+  // a parent always counts up, so it can take a count-up of its own.
+  async setSound(id: string, sound: TimerSound) {
+    await this.db.transaction("rw", this.db.activities, async () => {
+      const row = await this.byId(id)
+      if (!row) return
+      const isParent = (await this.children(id)).length > 0
+      const timer: TimerConfig | null = row.timer
+        ? { ...row.timer, sound }
+        : isParent
+          ? { mode: "up", sound }
+          : null
+      if (!timer) return
+      await this.scoped(id).modify({
+        timer: parseTimerConfig(timer),
+        updatedAt: parseUtc(now()),
+      })
     })
   }
 
@@ -520,48 +785,50 @@ class ActivitiesRepository {
     const updates = this.contentUpdatesTable()
     const created = await this.db.transaction(
       "rw",
-      [
-        this.db.areas,
-        this.db.activities,
-        this.db.activityTypes,
-        this.db.activityTypeFields,
-        this.db.mentions,
-        updates,
-      ],
-      async () => {
-        const rows = await this.insertMany(
-          plans.map(({ source: row, copyId, parentCopyId }) => {
-            const copiedOrigin =
-              row.origin?.kind === "activity"
-                ? copyIds.get(row.origin.activityId)
-                : undefined
-            return {
-              id: copyId,
-              areaId: row.areaId,
-              goalId: row.goalId,
-              parentId: parentCopyId,
-              typeId: row.typeId,
-              fields: row.fields,
-              dueDate: null,
-              title: row.title,
-              status: "todo" as const,
-              origin: copiedOrigin
-                ? {
-                    kind: "activity" as const,
-                    activityId: copiedOrigin,
-                    blockId: row.origin?.blockId ?? null,
-                  }
-                : null,
-              timer: row.timer,
-            }
-          })
+      [...this.routineTables(), this.db.mentions, updates],
+      () =>
+        this.routines().adopt(
+          source.parentId === null ? [] : [source.parentId],
+          async () => {
+            const rows = await this.insertRows(
+              plans.map(({ source: row, copyId, parentCopyId }) => {
+                const copiedOrigin =
+                  row.origin?.kind === "activity"
+                    ? copyIds.get(row.origin.activityId)
+                    : undefined
+                return {
+                  id: copyId,
+                  areaId: row.areaId,
+                  goalId: row.goalId,
+                  parentId: parentCopyId,
+                  typeId: row.typeId,
+                  fields: row.fields,
+                  dueDate: null,
+                  title: row.title,
+                  status: "todo" as const,
+                  origin: copiedOrigin
+                    ? {
+                        kind: "activity" as const,
+                        activityId: copiedOrigin,
+                        blockId: row.origin?.blockId ?? null,
+                      }
+                    : null,
+                  timer: row.timer,
+                  generated: row.generated,
+                  series: row.series,
+                }
+              })
+            )
+            await updates.bulkAdd(
+              [...contents].map(([copyId, content]) => ({
+                k: copyId,
+                u: content,
+              }))
+            )
+            await this.copyMentions(copyIds)
+            return rows
+          }
         )
-        await updates.bulkAdd(
-          [...contents].map(([copyId, content]) => ({ k: copyId, u: content }))
-        )
-        await this.copyMentions(copyIds)
-        return rows
-      }
     )
     await this.seedContents(
       plans
@@ -675,20 +942,16 @@ class ActivitiesRepository {
   }
 
   changeType(id: string, typeId: string | null) {
-    return this.db.transaction(
-      "rw",
-      [this.db.activities, this.db.activityTypes, this.db.activityTypeFields],
-      async () => {
-        const row = await this.byId(id)
-        if (!row || row.typeId === typeId) return
-        const fields = await this.typeFields(typeId)
-        await this.db.activities.update(id, {
-          typeId,
-          fields: keepValidValues(fields, row.fields),
-          updatedAt: parseUtc(now()),
-        })
-      }
-    )
+    return this.routines().retime(async () => {
+      const row = await this.byId(id)
+      if (!row || row.typeId === typeId) return
+      const fields = await this.typeFields(typeId)
+      await this.db.activities.update(id, {
+        typeId,
+        fields: keepValidValues(fields, row.fields),
+        updatedAt: parseUtc(now()),
+      })
+    })
   }
 
   listForGoal(goalId: string) {
@@ -710,5 +973,5 @@ class ActivitiesRepository {
   }
 }
 
-export { ActivitiesRepository, InvalidParentError }
-export type { ActivitiesContext, DeletedActivity, NewActivity }
+export { ActivitiesRepository, InvalidParentError, statusChange }
+export type { ActivitiesContext, DeletedActivity, NewActivity, SeriesHolder }

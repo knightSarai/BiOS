@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import {
   addCivilDays,
   addSeconds,
@@ -17,6 +17,7 @@ import {
   isoWeekKey,
   isoWeekOf,
   isCivilDate,
+  localDateTimeToUtc,
   parseCivilDate,
   oneMillisecondAfter,
   oneMillisecondBefore,
@@ -26,6 +27,7 @@ import {
   startOfDayUtc,
   toCivilDate,
   toLocalDate,
+  toLocalTime,
   utcPlusSeconds,
 } from "#core/datetime"
 
@@ -132,6 +134,16 @@ describe("addSeconds", () => {
     expect(addSeconds(start, 90)).toBe("2026-11-07T10:01:30.000Z")
     expect(addSeconds(start, 1.5)).toBe("2026-11-07T10:00:01.500Z")
     expect(addSeconds(start, -60)).toBe("2026-11-07T09:59:00.000Z")
+  })
+
+  it("rounds to the nearest millisecond rather than truncating", () => {
+    const epoch = parseUtc("1970-01-01T00:00:00.000Z")
+    const start = 1794387600.123
+    // A float sum that lands a hair under the millisecond it means.
+    expect(addSeconds(epoch, start + 60 - 1e-7)).toBe(
+      "2026-11-11T09:01:00.123Z"
+    )
+    expect(addSeconds(epoch, 0.0004)).toBe("1970-01-01T00:00:00.000Z")
   })
 })
 
@@ -315,6 +327,79 @@ describe("toLocalDate", () => {
     const instant = startOfDayUtc("2026-01-15", "Australia/Sydney")
 
     expect(toLocalDate(instant, "Australia/Sydney")).toBe("2026-01-15")
+  })
+})
+
+describe("localDateTimeToUtc / toLocalTime", () => {
+  it("reads a wall-clock time in the workspace timezone", () => {
+    expect(localDateTimeToUtc("2026-01-15", "18:30", "Australia/Sydney")).toBe(
+      "2026-01-15T07:30:00.000Z",
+    )
+  })
+
+  it("uses the offset in force on that day, either side of a DST change", () => {
+    expect(localDateTimeToUtc("2026-03-07", "09:00", "America/New_York")).toBe(
+      "2026-03-07T14:00:00.000Z",
+    )
+    expect(localDateTimeToUtc("2026-03-09", "09:00", "America/New_York")).toBe(
+      "2026-03-09T13:00:00.000Z",
+    )
+    expect(localDateTimeToUtc("2026-04-05", "06:00", "Australia/Sydney")).toBe(
+      "2026-04-04T20:00:00.000Z",
+    )
+  })
+
+  it("reads times on the day of a DST change by the offset at that moment", () => {
+    expect(localDateTimeToUtc("2026-03-08", "01:30", "America/New_York")).toBe(
+      "2026-03-08T06:30:00.000Z",
+    )
+    expect(localDateTimeToUtc("2026-03-08", "03:30", "America/New_York")).toBe(
+      "2026-03-08T07:30:00.000Z",
+    )
+  })
+
+  it("reads a skipped time an hour later and a repeated one as standard time", () => {
+    expect(localDateTimeToUtc("2026-03-08", "02:30", "America/New_York")).toBe(
+      "2026-03-08T07:30:00.000Z",
+    )
+    expect(localDateTimeToUtc("2026-11-01", "01:30", "America/New_York")).toBe(
+      "2026-11-01T06:30:00.000Z",
+    )
+  })
+
+  it.each([
+    ["summer", "2026-07-15T12:00:00.000Z"],
+    ["winter", "2026-01-15T12:00:00.000Z"],
+  ])(
+    "reads a repeated time the same way whatever today's date is (%s)",
+    (_, today) => {
+      vi.useFakeTimers({ toFake: ["Date"] })
+      vi.setSystemTime(new Date(today))
+      try {
+        expect(
+          localDateTimeToUtc("2026-11-01", "01:30", "America/New_York"),
+        ).toBe("2026-11-01T06:30:00.000Z")
+        expect(
+          localDateTimeToUtc("2026-04-05", "02:30", "Australia/Sydney"),
+        ).toBe("2026-04-04T16:30:00.000Z")
+        expect(localDateTimeToUtc("2026-10-25", "01:30", "Europe/London")).toBe(
+          "2026-10-25T01:30:00.000Z",
+        )
+        expect(
+          localDateTimeToUtc("2026-03-08", "02:30", "America/New_York"),
+        ).toBe("2026-03-08T07:30:00.000Z")
+      } finally {
+        vi.useRealTimers()
+      }
+    },
+  )
+
+  it("round-trips through toLocalTime", () => {
+    const instant = localDateTimeToUtc("2026-07-01", "07:05", "Europe/London")
+
+    expect(instant).toBe("2026-07-01T06:05:00.000Z")
+    expect(toLocalTime(instant, "Europe/London")).toBe("07:05")
+    expect(toLocalDate(instant, "Europe/London")).toBe("2026-07-01")
   })
 })
 

@@ -2,6 +2,7 @@ import { QueryObserver, type QueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import type { ActivityBridge } from "@/editor/activity-bridge"
 import type { DeletedActivity } from "@/local-db/activities"
+import { resyncRunningRoutine } from "@/local-db/activity-mutations"
 import type { ActivityOrigin } from "@/local-db/db"
 import {
   activitiesRepository,
@@ -45,6 +46,12 @@ const createActivityBridge = (
       queryKey: activityKeys.all(options.workspace.id),
     })
 
+  // Any of these can change the running routine's tree or its playing activity.
+  const invalidateAndRearm = async () => {
+    await invalidate()
+    await resyncRunningRoutine(options.queryClient, options.workspace.id, true)
+  }
+
   const create: ActivityBridge["create"] = (drafts) => {
     const ids = drafts.map((draft) => draft.activityId)
     for (const id of ids) {
@@ -76,7 +83,7 @@ const createActivityBridge = (
         return
       }
 
-      await invalidate()
+      await invalidateAndRearm()
       for (const id of ids) pending.delete(id)
       const [first] = created
       toast.success(
@@ -115,7 +122,7 @@ const createActivityBridge = (
       } catch {
         toast.error("Undo couldn't remove the activities it created.")
       }
-      await invalidate()
+      await invalidateAndRearm()
       if (removed > 0) toast(`Undo removed ${countLabel(removed)}`)
     })
   }
@@ -135,7 +142,7 @@ const createActivityBridge = (
       } catch {
         toast.error("Redo couldn't bring the activities back.")
       }
-      await invalidate()
+      await invalidateAndRearm()
       if (restored > 0) toast(`Redo brought back ${countLabel(restored)}`)
     })
   }
@@ -156,7 +163,7 @@ const createActivityBridge = (
       return observer.subscribe((result) => emit(result.data))
     },
     toggleDone: (activityId) => {
-      repository.toggleDone(activityId).then(invalidate, () => {
+      repository.toggleDone(activityId).then(invalidateAndRearm, () => {
         toast.error("Couldn't update that activity.")
       })
     },

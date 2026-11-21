@@ -1,28 +1,50 @@
 import { Suspense } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
-import { useAtom } from "jotai"
-import { Plus } from "lucide-react"
+import { useAtom, useSetAtom } from "jotai"
+import { Ellipsis, Pause, Play, Plus } from "lucide-react"
 import {
   NewActivityForm,
   type NewActivityWorkspace,
 } from "@/activities/components/NewActivityForm"
 import { SubActivityProgress } from "@/activities/components/ProgressRing"
+import { swatchStyle } from "@/activities/components/ColorDot"
+import { TimerField } from "@/activities/components/RoutineTimer"
 import { StatusIcon } from "@/activities/components/StatusIcon"
 import { subActivityFormAtom } from "@/activities/new-activity"
+import { findNode, type RoutineNode, type Session } from "@/activities/routine"
+import {
+  actualVersusPlanned,
+  clock,
+  isLive,
+  playOnlyHint,
+  timeNote,
+} from "@/activities/routine-view"
 import {
   descendantIndex,
   subActivityProgress,
   subActivityTree,
   type TreeNode,
 } from "@/activities/sub-activities"
+import {
+  useRoutine,
+  useRoutineSession,
+  type Routine,
+} from "@/activities/use-routine"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { ActivitiesRepository } from "@/local-db/activities"
 import { useToggleActivityDone } from "@/local-db/activity-mutations"
 import {
   activitySummaryQuery,
+  routineQuery,
   subActivitiesQuery,
 } from "@/local-db/activity-queries"
 import type { ActivityRow } from "@/local-db/db"
@@ -34,18 +56,125 @@ type SubActivity = Awaited<
   ReturnType<ActivitiesRepository["subActivities"]>
 >[number]
 
+type FormParent = {
+  id: string
+  key: string
+  // The type the next one starts with: the last one added.
+  typeId: string | null
+}
+
+// What actually happened against the plan, or the plan itself before any time is logged,
+// typed over in place while the activity is still open.
+function TimeColumn({
+  timer,
+  node,
+  open,
+}: {
+  timer: Routine
+  node: RoutineNode
+  open: boolean
+}) {
+  const result = actualVersusPlanned(timer.session, node)
+  const note = timeNote(result)
+  if (result.actual === 0) {
+    return open && node.children.length === 0 ? (
+      <TimerField workspaceId={timer.workspaceId} node={node} variant="row" />
+    ) : (
+      <>{result.planned ? clock(result.planned) : "counts up"}</>
+    )
+  }
+  return (
+    <>
+      <span className="text-foreground">{clock(result.actual)}</span>
+      {result.planned ? (
+        <span className="opacity-70"> of {clock(result.planned)}</span>
+      ) : null}
+      {note ? (
+        <span
+          className="text-muted-foreground"
+          title={
+            note === "ended early"
+              ? undefined
+              : "Typed in afterwards, not timed"
+          }
+        >
+          {" "}
+          · {note}
+        </span>
+      ) : null}
+    </>
+  )
+}
+
+// A row's actions sit behind one ⋯ so titles keep their room, on phones especially.
+function RowMenu({
+  label,
+  only,
+  onAdd,
+}: {
+  label: string
+  only: { hint: string; onClick: () => void } | null
+  onAdd: () => void
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 data-[popup-open]:opacity-100 max-md:size-11 max-md:opacity-100"
+            aria-label={`More for ${label}`}
+            title="More"
+          />
+        }
+      >
+        <Ellipsis />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-72">
+        {only ? (
+          <DropdownMenuItem onClick={only.onClick}>
+            <Play />
+            Play only this
+            <span className="ml-auto text-xs text-muted-foreground">
+              {only.hint}
+            </span>
+          </DropdownMenuItem>
+        ) : null}
+        <DropdownMenuItem onClick={onAdd}>
+          <Plus />
+          Add sub-activity
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+// A countdown stops counting once its activity has sub-activities, so the form says so first.
+const noticeFor = (node: RoutineNode | null) =>
+  node && node.children.length === 0 && node.timer.mode === "down"
+    ? `${node.title} counts down from ${clock(node.timer.seconds)}. With sub-activities, ${node.title}’s time is the sum of theirs.`
+    : null
+
 function SubActivityRows({
   nodes,
   descendantsOf,
   workspace,
   nested,
+  timer,
+  form,
 }: {
   nodes: TreeNode<SubActivity>[]
   descendantsOf: (id: string) => SubActivity[]
   workspace: Workspace
   nested: boolean
+  timer: Routine | null
+  form: (parent: FormParent) => React.ReactNode
 }) {
   const toggleDone = useToggleActivityDone(workspace.id)
+  const setFormFor = useSetAtom(subActivityFormAtom)
+  const session = timer?.session ?? null
 
   return (
     <ul className={cn("flex flex-col", nested && "ml-7")}>
@@ -53,6 +182,20 @@ function SubActivityRows({
         const closed = child.status === "done" || child.status === "canceled"
         const below = descendantsOf(child.id)
         const progress = subActivityProgress(below.map((row) => row.status))
+        const node = session ? findNode(session.root, child.id) : null
+        const live =
+          session !== null &&
+          isLive(session) &&
+          session.current?.node.id === child.id
+        const running = live && session.phase === "running"
+        const playingThis =
+          session?.phase === "running" && session.scope?.id === child.id
+        const type = timer?.typeOf(node) ?? null
+        const childForm = form({
+          id: child.id,
+          key: child.key,
+          typeId: children.at(-1)?.item.typeId ?? child.typeId,
+        })
         return (
           <li
             key={child.id}
@@ -61,15 +204,30 @@ function SubActivityRows({
                 "relative before:absolute before:top-0 before:-left-3 before:h-[18px] before:w-2.5 before:rounded-bl-md before:border-b before:border-l before:border-border after:absolute after:top-0 after:bottom-0 after:-left-3 after:border-l after:border-border last:after:hidden max-md:before:h-[22px]"
             )}
           >
-            <div className="flex min-h-9 items-center gap-3 rounded-md px-2 hover:bg-accent max-md:min-h-11">
+            <div
+              style={live && type ? swatchStyle(type.color) : undefined}
+              className={cn(
+                "group/row flex min-h-9 items-center gap-3 rounded-md px-2 hover:bg-accent max-md:min-h-11",
+                live && "bg-selection hover:bg-selection",
+                live &&
+                  type &&
+                  "bg-[color-mix(in_oklch,var(--swatch)_14%,var(--color-background))] hover:bg-[color-mix(in_oklch,var(--swatch)_14%,var(--color-background))]"
+              )}
+            >
               <Checkbox
                 checked={child.status === "done"}
+                className="max-md:after:-inset-3.5"
                 aria-label={
                   child.status === "done"
                     ? `Reopen ${child.key}`
                     : `Mark ${child.key} as done`
                 }
-                onCheckedChange={() => toggleDone.mutate(child.id)}
+                // Through the routine, so ticking the one that's running hands over to the next.
+                onCheckedChange={() =>
+                  timer
+                    ? timer.act({ kind: "toggleDone", id: child.id })
+                    : toggleDone.mutate(child.id)
+                }
               />
               <Link
                 to="/$workspace/activities/$activityId"
@@ -84,7 +242,7 @@ function SubActivityRows({
                   dir="auto"
                   className={cn(
                     "min-w-0 truncate",
-                    closed && "text-muted-foreground",
+                    closed && !live && "text-muted-foreground",
                     child.status === "canceled" && "line-through"
                   )}
                 >
@@ -104,6 +262,51 @@ function SubActivityRows({
                   </span>
                 ) : null}
               </Link>
+              {live ? (
+                <span
+                  className={cn(
+                    "rounded-full px-2 py-0.5 text-[0.625rem] font-semibold tracking-wider text-background uppercase",
+                    running
+                      ? type
+                        ? "bg-(--swatch)"
+                        : "bg-accent-text"
+                      : "bg-foreground"
+                  )}
+                >
+                  {running ? "Now" : "Paused"}
+                </span>
+              ) : timer && node ? (
+                <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                  <TimeColumn timer={timer} node={node} open={!closed} />
+                </span>
+              ) : null}
+              {playingThis && timer ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Pause"
+                  title="Pause"
+                  onClick={() => timer.act({ kind: "pause" })}
+                  className="rounded-full text-accent-text max-md:size-11"
+                >
+                  <Pause />
+                </Button>
+              ) : live ? null : (
+                <RowMenu
+                  label={child.title || child.key}
+                  only={
+                    timer
+                      ? {
+                          hint: playOnlyHint(timer.session),
+                          onClick: () =>
+                            timer.act({ kind: "playOnly", id: child.id }),
+                        }
+                      : null
+                  }
+                  onAdd={() => setFormFor(child.id)}
+                />
+              )}
             </div>
             {children.length > 0 ? (
               <SubActivityRows
@@ -111,8 +314,11 @@ function SubActivityRows({
                 descendantsOf={descendantsOf}
                 workspace={workspace}
                 nested
+                timer={timer}
+                form={form}
               />
             ) : null}
+            {childForm ? <div className="ml-7">{childForm}</div> : null}
           </li>
         )
       })}
@@ -120,16 +326,18 @@ function SubActivityRows({
   )
 }
 
-function SubActivities({
+function SubActivityList({
   activity,
   activityKey,
   workspace,
   className,
+  timer,
 }: {
   activity: ActivityRow
   activityKey: string
   workspace: NewActivityWorkspace
   className?: string
+  timer: Routine | null
 }) {
   const { data: all = [] } = useQuery(
     subActivitiesQuery(workspace.id, activity.id)
@@ -142,25 +350,28 @@ function SubActivities({
   const closeForm = () => setFormFor(null)
 
   // A new sub-activity starts with the parent's area and goal, and the type of the last one added.
-  const lastChild = tree.at(-1)?.item
-  const form = formOpen ? (
-    <div className="rounded-lg border bg-card text-sm shadow-sm">
-      <Suspense fallback={<Skeleton className="m-4 h-24" />}>
-        <NewActivityForm
-          key={activity.id}
-          workspace={workspace}
-          variant="inline"
-          request={{
-            areaId: activity.areaId,
-            goalId: activity.goalId,
-            typeId: lastChild?.typeId ?? null,
-            parent: { id: activity.id, key: activityKey },
-          }}
-          onClose={closeForm}
-        />
-      </Suspense>
-    </div>
-  ) : null
+  const form = (parent: FormParent) =>
+    formFor === parent.id ? (
+      <div className="my-1 rounded-lg border bg-card text-sm shadow-sm">
+        <Suspense fallback={<Skeleton className="m-4 h-24" />}>
+          <NewActivityForm
+            key={parent.id}
+            workspace={workspace}
+            variant="inline"
+            notice={noticeFor(
+              timer ? findNode(timer.session.root, parent.id) : null
+            )}
+            request={{
+              areaId: activity.areaId,
+              goalId: activity.goalId,
+              typeId: parent.typeId,
+              parent: { id: parent.id, key: parent.key },
+            }}
+            onClose={closeForm}
+          />
+        </Suspense>
+      </div>
+    ) : null
 
   // One outer shape for both states, so the form keeps focus when the first one is added
   // and the live region is already there to announce it.
@@ -214,11 +425,41 @@ function SubActivities({
             descendantsOf={descendantIndex(all)}
             workspace={workspace}
             nested={false}
+            timer={timer}
+            form={form}
           />
         </>
       )}
-      {form}
+      {form({
+        id: activity.id,
+        key: activityKey,
+        typeId: tree.at(-1)?.item.typeId ?? null,
+      })}
     </section>
+  )
+}
+
+function TimedSubActivities({
+  global,
+  ...props
+}: Omit<Parameters<typeof SubActivityList>[0], "timer"> & {
+  global: Session
+}) {
+  const timer = useRoutine(props.workspace.id, global, props.activity.id)
+  return <SubActivityList {...props} timer={timer} />
+}
+
+function SubActivities(
+  props: Omit<Parameters<typeof SubActivityList>[0], "timer">
+) {
+  const { data: state } = useQuery(
+    routineQuery(props.workspace.id, props.activity.id)
+  )
+  const global = useRoutineSession(state)
+  return global ? (
+    <TimedSubActivities {...props} global={global} />
+  ) : (
+    <SubActivityList {...props} timer={null} />
   )
 }
 

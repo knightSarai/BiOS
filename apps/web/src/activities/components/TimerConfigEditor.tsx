@@ -1,15 +1,12 @@
 import { useId } from "react"
 import { Volume2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { cn } from "@/lib/utils"
 import {
   MAX_TIMER_SECONDS,
   TIMER_MODES,
   TIMER_SOUNDS,
-  formatClock,
-  parseClock,
   timerModeLabels,
   timerSoundLabels,
   withMode,
@@ -17,83 +14,12 @@ import {
   type TimerMode,
   type TimerSound,
 } from "../timer"
+import { secondsToValue, valueToSeconds } from "../duration"
 import { previewSound } from "../timer-runner"
+import { DurationChip } from "./DurationField"
 
-type NumberInputProps = {
-  label: string
-  value: number
-  min: number
-  max: number
-  format: (value: number) => string
-  parse: (text: string) => number | null
-  onCommit: (value: number) => void
-}
-
-// Uncontrolled and keyed by the saved value, so stored settings aren't mirrored in client state.
-function CommitNumberInput({
-  label,
-  value,
-  min,
-  max,
-  format,
-  parse,
-  onCommit,
-}: NumberInputProps) {
-  const id = useId()
-  const shown = format(value)
-  return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="text-xs text-muted-foreground">
-        {label}
-      </label>
-      <Input
-        id={id}
-        key={shown}
-        defaultValue={shown}
-        inputMode="numeric"
-        className="h-8 w-24 tabular-nums max-md:h-11"
-        onBlur={(event) => {
-          const next = parse(event.currentTarget.value)
-          if (next === null || next < min || next > max) {
-            event.currentTarget.value = shown
-            return
-          }
-          if (next !== value) onCommit(next)
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") event.currentTarget.blur()
-          if (event.key === "Escape") {
-            event.currentTarget.value = shown
-            event.currentTarget.blur()
-          }
-        }}
-      />
-    </div>
-  )
-}
-
-function DurationInput({
-  label,
-  value,
-  onCommit,
-}: {
-  label: string
-  value: number
-  onCommit: (value: number) => void
-}) {
-  return (
-    <CommitNumberInput
-      label={label}
-      value={value}
-      min={1}
-      max={MAX_TIMER_SECONDS}
-      format={(seconds) => formatClock(seconds, "down")}
-      parse={parseClock}
-      onCommit={onCommit}
-    />
-  )
-}
-
+// Typed digit by digit like every other duration in the app, so a phone keyboard without a
+// colon still means minutes and seconds.
 function ModeDurations({
   config,
   onChange,
@@ -103,21 +29,34 @@ function ModeDurations({
 }) {
   if (config.mode === "up") return null
   return (
-    <DurationInput
-      label="Duration"
-      value={config.seconds}
-      onCommit={(seconds) => onChange({ ...config, seconds })}
-    />
+    <div className="flex flex-col gap-1.5">
+      <span className="text-xs text-muted-foreground">Duration</span>
+      <DurationChip
+        value={secondsToValue(config.seconds)}
+        label="Duration"
+        zeroLabel=""
+        icon={false}
+        title="Duration"
+        className="h-8 w-fit max-md:h-11"
+        onCommit={(next) => {
+          const seconds = valueToSeconds(next)
+          if (seconds < 1 || seconds > MAX_TIMER_SECONDS) return
+          onChange({ ...config, seconds })
+        }}
+      />
+    </div>
   )
 }
 
 function TimerConfigEditor({
   config,
   onChange,
+  sound = true,
   className,
 }: {
   config: TimerConfig
   onChange: (config: TimerConfig) => void
+  sound?: boolean
   className?: string
 }) {
   const modeLabelId = useId()
@@ -142,14 +81,18 @@ function TimerConfigEditor({
           className="flex-wrap"
         >
           {TIMER_MODES.map((mode) => (
-            <ToggleGroupItem key={mode} value={mode} className="max-md:h-11">
+            <ToggleGroupItem
+              key={mode}
+              value={mode}
+              className="aria-pressed:border-primary aria-pressed:bg-selection aria-pressed:text-accent-text max-md:h-11"
+            >
               {timerModeLabels[mode]}
             </ToggleGroupItem>
           ))}
         </ToggleGroup>
       </div>
       <ModeDurations config={config} onChange={onChange} />
-      {config.mode === "up" ? null : (
+      {config.mode === "up" || !sound ? null : (
         <div className="flex flex-col gap-1.5">
           <span id={soundLabelId} className="text-xs text-muted-foreground">
             Sound
@@ -171,7 +114,7 @@ function TimerConfigEditor({
                 <ToggleGroupItem
                   key={sound}
                   value={sound}
-                  className="max-md:h-11"
+                  className="aria-pressed:border-primary aria-pressed:bg-selection aria-pressed:text-accent-text max-md:h-11"
                 >
                   {timerSoundLabels[sound]}
                 </ToggleGroupItem>

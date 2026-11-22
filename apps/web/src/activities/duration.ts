@@ -138,10 +138,38 @@ const replacedValue = (text: string, shown: string): Edit => {
   return { value, caret: value.length }
 }
 
+const replacements = [
+  "insertFromPaste",
+  "insertFromDrop",
+  "insertReplacementText",
+]
+
+// What an input event did, for phone keyboards that skip key events: a paste, or text a
+// keyboard puts in at once, is taken whole like an autofill, and a digit typed over the
+// whole field starts it over.
+const inputEdit = (
+  input: { value: string; caret: number; type: string; data: string | null },
+  shown: string
+): Edit => {
+  if (replacements.includes(input.type) || (input.data?.length ?? 0) > 1)
+    return replacedValue(input.value, shown)
+  if (input.type.startsWith("delete"))
+    return input.value === ""
+      ? { value: EMPTY, caret: 0 }
+      : backspace(shown, input.caret + 1)
+  if (input.data && /^\d$/.test(input.data)) {
+    return input.value === input.data
+      ? typeDigit(EMPTY, 0, input.data)
+      : typeDigit(shown, input.caret - 1, input.data)
+  }
+  return { value: shown, caret: Math.max(0, input.caret - 1) }
+}
+
 export {
   EMPTY,
   backspace,
   deleteForward,
+  inputEdit,
   replacedValue,
   secondsToValue,
   tidyValue,

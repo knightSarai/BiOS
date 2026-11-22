@@ -78,9 +78,9 @@ function TimeColumn({
   const note = timeNote(result)
   if (result.actual === 0) {
     return open && node.children.length === 0 ? (
-      <TimerField workspaceId={timer.workspaceId} node={node} variant="row" />
+      <TimerField workspaceId={timer.workspaceId} node={node} />
     ) : (
-      <>{result.planned ? clock(result.planned) : "counts up"}</>
+      <>{result.planned ? clock(result.planned) : "stopwatch"}</>
     )
   }
   return (
@@ -229,7 +229,7 @@ function SubActivityRows({
               <Link
                 to="/$workspace/activities/$activityId"
                 params={{ workspace: workspace.slug, activityId: child.id }}
-                className="flex min-w-0 flex-1 items-center gap-2 text-sm"
+                className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden text-sm"
               >
                 <StatusIcon status={child.status} />
                 <span className="shrink-0 text-xs text-muted-foreground tabular-nums">

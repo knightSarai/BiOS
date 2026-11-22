@@ -3,6 +3,7 @@ import {
   EMPTY,
   backspace,
   deleteForward,
+  inputEdit,
   replacedValue,
   secondsToValue,
   tidyValue,
@@ -135,5 +136,55 @@ describe("a change that isn't typing", () => {
       value: "02:30",
       caret: 5,
     })
+  })
+})
+
+describe("a phone keyboard that skips key events", () => {
+  const typed = (
+    value: string,
+    caret: number,
+    data: string | null,
+    type = "insertText"
+  ) => ({ value, caret, type, data })
+
+  it("types a digit where it landed", () => {
+    expect(inputEdit(typed("025:00", 1, "2"), "25:00")).toEqual(
+      typeDigit("25:00", 0, "2")
+    )
+  })
+
+  it("starts over when a digit replaces the whole field", () => {
+    expect(inputEdit(typed("2", 1, "2"), "1:30:00")).toEqual(
+      typeDigit(EMPTY, 0, "2")
+    )
+  })
+
+  it("takes a pasted time whole", () => {
+    expect(
+      inputEdit(typed("25:30", 5, null, "insertFromPaste"), "1:30:00").value
+    ).toBe("25:30")
+  })
+
+  it("takes a whole time a keyboard puts in at once", () => {
+    expect(inputEdit(typed("25:30", 5, "25:30"), "1:30:00").value).toBe("25:30")
+  })
+
+  it("keeps the field for a paste that isn't a time", () => {
+    expect(
+      inputEdit(typed("soon", 4, null, "insertFromPaste"), "10:00").value
+    ).toBe("10:00")
+  })
+
+  it("clears to 00:00 when the whole field is cut or deleted", () => {
+    expect(inputEdit(typed("", 0, null, "deleteByCut"), "1:30:00")).toEqual({
+      value: EMPTY,
+      caret: 0,
+    })
+  })
+
+  it("zeroes the digit left of the cursor on delete", () => {
+    expect(
+      inputEdit(typed("1000", 2, null, "deleteContentBackward"), "10:00")
+    ).toEqual(backspace("10:00", 3))
   })
 })

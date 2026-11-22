@@ -32,8 +32,8 @@ type TimerCue = "work" | "rest" | "finish"
 const DEFAULT_TIMER: TimerConfig = { mode: "up", sound: "none" }
 
 const timerModeLabels: Record<TimerMode, string> = {
-  up: "Counts up",
-  down: "Counts down",
+  up: "Stopwatch",
+  down: "Countdown",
 }
 
 const timerSoundLabels: Record<TimerSound, string> = {

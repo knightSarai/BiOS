@@ -5,19 +5,21 @@ import { Link, useParams } from "@tanstack/react-router"
 import { useAtom, useSetAtom } from "jotai"
 import {
   ArrowLeft,
+  BellRing,
   Check,
   ChevronDown,
   Ellipsis,
   ListRestart,
   Flag,
+  Focus,
   Maximize2,
   Pause,
-  Plus,
   Play,
   RotateCcw,
   RotateCw,
   SkipBack,
   SkipForward,
+  Timer,
   Volume2,
   VolumeX,
   X,
@@ -37,7 +39,11 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Popover, PopoverContent } from "@/components/ui/popover"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import {
   useSetActivitySound,
   useSetActivityStatus,
@@ -93,9 +99,10 @@ import {
   type Surface,
 } from "../use-routine"
 import { swatchStyle } from "./ColorDot"
-import { DurationChip, DurationDigits } from "./DurationField"
+import { DurationDigits } from "./DurationField"
 import type { AddTimeOffer } from "./LogTime"
 import { StatusIcon } from "./StatusIcon"
+import { TimerConfigEditor } from "./TimerConfigEditor"
 import { StatusMenu } from "./StatusMenu"
 import { TypeMark, type TimerType } from "./TypeMark"
 
@@ -737,7 +744,7 @@ function UpNext({ timer }: { timer: Routine }) {
       <span className="shrink-0 tabular-nums">
         {next.node.timer.mode === "down"
           ? clock(next.node.timer.seconds)
-          : "counts up"}
+          : "stopwatch"}
       </span>
     </span>
   )
@@ -810,17 +817,17 @@ function SoundMenu({ timer }: { timer: Routine }) {
   )
 }
 
-// Saved on Enter or leaving the field, so typing 1, 2, 0 writes once, not three times.
+const stepDigitsClassName =
+  "rounded-none border-b border-dotted border-foreground/40 px-1 text-right hover:border-foreground focus:rounded focus:border-transparent focus:bg-background focus:text-foreground focus:ring-2 focus:ring-ring/40"
+
+// A step's length, typed over in its row. A stopwatch says so in a word and shows its digits
+// only while typed over. Saved on Enter or leaving the field, so typing 1, 2, 0 writes once.
 function TimerField({
   workspaceId,
   node,
-  variant,
-  className,
 }: {
   workspaceId: string
   node: RoutineNode
-  variant: "chip" | "compact" | "row"
-  className?: string
 }) {
   const setTimer = useSetActivityTimer(workspaceId)
   const value =
@@ -830,29 +837,34 @@ function TimerField({
       { id: node.id, timer: timerFrom(next, node.timer.sound) },
       { onError: () => toast.error("Couldn't save the timer.") }
     )
-  if (variant !== "row") {
+  if (node.timer.mode === "up") {
     return (
-      <DurationChip
-        value={value}
-        label={`${node.title} timer`}
-        zeroLabel={variant === "chip" ? "stopwatch" : ""}
-        icon={variant === "chip"}
-        className={className}
-        onCommit={set}
-      />
+      <label
+        title="Type a duration to make it a countdown"
+        className="group inline-flex cursor-text items-baseline"
+      >
+        <span className="border-b border-dotted border-foreground/40 group-focus-within:hidden hover:border-foreground">
+          stopwatch
+        </span>
+        <DurationDigits
+          value={value}
+          label={`${node.title} timer`}
+          onCommit={set}
+          className={cn(
+            stepDigitsClassName,
+            "w-0 min-w-0 px-0 opacity-0 group-focus-within:w-auto group-focus-within:min-w-[5ch] group-focus-within:px-1 group-focus-within:opacity-100"
+          )}
+        />
+      </label>
     )
   }
   return (
-    <span
-      title="Type a duration over the time; 00:00 is a stopwatch"
-      className="inline-flex items-baseline gap-1"
-    >
-      {node.timer.mode === "up" ? <span>stopwatch</span> : null}
+    <span title="Type a duration over the time; 00:00 is a stopwatch">
       <DurationDigits
         value={value}
         label={`${node.title} timer`}
         onCommit={set}
-        className="rounded px-1 text-right decoration-dotted underline-offset-4 hover:underline focus:bg-accent focus:text-foreground"
+        className={stepDigitsClassName}
       />
     </span>
   )
@@ -958,8 +970,291 @@ function StatusValue({
   )
 }
 
-// The timer as a property: what it's doing in words, its one main action as a labelled
-// button, and everything else in a menu of labelled items.
+type Reading = {
+  mark: "ended" | "finished" | "done" | null
+  lead: string | null
+  text: string
+  clock: boolean
+  tone: "plain" | "live" | "quiet" | "warning" | "muted"
+}
+
+const readingMarks = {
+  ended: <BellRing className="size-3.5 shrink-0 text-warning-text" />,
+  finished: <Flag className="size-3.5 shrink-0 text-muted-foreground" />,
+  done: <Timer className="size-3.5 shrink-0 text-muted-foreground" />,
+} satisfies Record<NonNullable<Reading["mark"]>, React.ReactNode>
+
+const readingTones = {
+  plain: "text-foreground",
+  live: "font-semibold text-accent-text",
+  quiet: "font-medium text-muted-foreground",
+  warning: "font-medium text-warning-text",
+  muted: "text-muted-foreground",
+} satisfies Record<Reading["tone"], string>
+
+const readingWords = (reading: Reading) =>
+  reading.lead ? `${reading.lead} ${reading.text}` : reading.text
+
+function ReadingText({ reading }: { reading: Reading }) {
+  return (
+    <>
+      {reading.mark ? (
+        <span
+          aria-hidden
+          className={cn(
+            "contents",
+            reading.mark === "done" && "@max-[12rem]/timer:hidden"
+          )}
+        >
+          {readingMarks[reading.mark]}
+        </span>
+      ) : null}
+      <span className="flex min-w-0 items-baseline gap-1">
+        {reading.lead ? (
+          <span className={cn("truncate text-sm", readingTones[reading.tone])}>
+            {reading.lead}
+          </span>
+        ) : null}
+        <span
+          className={cn(
+            "text-sm whitespace-nowrap tabular-nums",
+            reading.clock ? "shrink-0" : "truncate",
+            readingTones[reading.tone]
+          )}
+        >
+          {reading.text}
+        </span>
+      </span>
+    </>
+  )
+}
+
+// What the timer reads, on the left where every other property shows its value: the one
+// time that matters in that state, marked only where there's nothing to play or pause.
+const readingOf = (
+  timer: Routine,
+  state: { live: boolean; ended: boolean; done: boolean; finished: boolean }
+): Reading => {
+  const { session } = timer
+  if (state.ended)
+    return {
+      mark: "ended",
+      lead: null,
+      text: "Ended",
+      clock: false,
+      tone: "warning",
+    }
+  if (state.live) {
+    const text = clockText(timer) ?? ""
+    return session.phase === "running"
+      ? { mark: null, lead: null, text, clock: true, tone: "live" }
+      : { mark: null, lead: null, text, clock: true, tone: "quiet" }
+  }
+  if (state.done) {
+    const took = heldSeconds(session.run, logTargetOf(timer), session.now)
+    return took > 0
+      ? {
+          mark: "done",
+          lead: "Took",
+          text: clock(took),
+          clock: true,
+          tone: "plain",
+        }
+      : {
+          mark: "done",
+          lead: null,
+          text: "No time",
+          clock: false,
+          tone: "muted",
+        }
+  }
+  if (state.finished) {
+    const { seconds } = summaryOf(session)
+    return {
+      mark: "finished",
+      lead: seconds > 0 ? "Finished ·" : null,
+      text: seconds > 0 ? clock(seconds) : "Finished",
+      clock: seconds > 0,
+      tone: "plain",
+    }
+  }
+  const planned = plannedSeconds(
+    narrowedTo(session) ? session.scoped : session.leaves
+  )
+  return planned > 0
+    ? {
+        mark: null,
+        lead: null,
+        text: clock(planned),
+        clock: true,
+        tone: "plain",
+      }
+    : { mark: null, lead: null, text: "Stopwatch", clock: false, tone: "muted" }
+}
+
+const narrowedTo = (session: Routine["session"]) =>
+  session.scope !== null &&
+  session.scope.id !== session.root.id &&
+  session.phase !== "finished"
+    ? session.scope
+    : null
+
+const readingClassName =
+  "flex h-7 min-w-0 items-center gap-1.5 rounded-md px-1 max-md:h-10"
+
+// Start, pause and resume are the round button the reading starts with: filled like the
+// dock's, amber while paused, and one element throughout so focus stays on it.
+const toggleLooks = {
+  play: "bg-primary text-primary-foreground hover:bg-primary/85",
+  pause: "bg-primary text-primary-foreground hover:bg-primary/85",
+  resume:
+    "border-warning-text/40 bg-warning-bg text-warning-text hover:bg-warning-text/15 hover:text-warning-text",
+} as const
+
+function PlayToggle({
+  label,
+  look,
+  disabled,
+  onClick,
+}: {
+  label: string
+  look: keyof typeof toggleLooks
+  disabled: boolean
+  onClick: () => void
+}) {
+  const Icon = look === "pause" ? Pause : Play
+  return (
+    <span className="relative flex shrink-0">
+      <Button
+        type="button"
+        variant={look === "resume" ? "outline" : "default"}
+        size="icon-xs"
+        aria-label={label}
+        title={label}
+        disabled={disabled}
+        onClick={onClick}
+        className={cn(
+          "relative size-5 rounded-full transition-[transform,background-color] active:scale-95 max-md:size-7 max-md:after:absolute max-md:after:-inset-2",
+          toggleLooks[look]
+        )}
+      >
+        <Icon
+          className={cn(
+            "size-2.5 fill-current max-md:size-3",
+            look !== "pause" && "translate-x-px"
+          )}
+        />
+      </Button>
+      {look === "pause" ? (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute -inset-0.5 rounded-full ring-2 ring-primary/30 motion-safe:animate-pulse"
+        />
+      ) : null}
+    </span>
+  )
+}
+
+// A single activity's own timer is set from its reading, with the same editor as its type's.
+// Sound stays in the timer's menu, where it can change mid-run too.
+function LengthReading({
+  timer,
+  node,
+  reading,
+}: {
+  timer: Routine
+  node: RoutineNode
+  reading: Reading
+}) {
+  const setTimer = useSetActivityTimer(timer.workspaceId)
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={
+          <button
+            type="button"
+            aria-label={`Edit timer: ${reading.text}`}
+            className={cn(readingClassName, "gap-1 hover:bg-accent")}
+          />
+        }
+      >
+        <ReadingText reading={reading} />
+        <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="w-auto max-w-[calc(100vw-2rem)] p-3"
+      >
+        <TimerConfigEditor
+          config={node.timer}
+          sound={false}
+          onChange={(next) =>
+            setTimer.mutate(
+              { id: node.id, timer: next },
+              { onError: () => toast.error("Couldn't save the timer.") }
+            )
+          }
+        />
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+const partTones = {
+  running: "text-accent-text",
+  paused: "text-warning-text",
+  other: "text-muted-foreground",
+} as const
+
+// Playing one part on its own: the reading says so behind a click, since its name never
+// fits beside the buttons.
+function PartReading({
+  timer,
+  part,
+  reading,
+  tone,
+}: {
+  timer: Routine
+  part: RoutineNode
+  reading: Reading
+  tone: keyof typeof partTones
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={
+          <button
+            type="button"
+            aria-label={`${readingWords(reading)}, only ${part.title}`}
+            title={`Only ${part.title || "Untitled"}`}
+            className={cn(readingClassName, "gap-1 hover:bg-accent")}
+          />
+        }
+      >
+        <ReadingText reading={reading} />
+        <Focus className={cn("size-3.5 shrink-0", partTones[tone])} />
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-60 gap-2 p-3">
+        <span className="text-sm">
+          Only <span className="font-medium">{part.title || "Untitled"}</span>
+        </span>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="self-start max-md:h-10"
+          onClick={() => timer.act({ kind: "widen" })}
+        >
+          <ListRestart data-icon="inline-start" />
+          Back to the whole routine
+        </Button>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+// The timer as a property: the play/pause button and what it reads on the left, like every
+// other value; full screen, Add time and the menu pinned right.
 function TimerValue({
   timer,
   status,
@@ -983,139 +1278,79 @@ function TimerValue({
   const ended = live && timerEnded(session)
   const done = !live && status.value === "done"
   const finished = !live && (phase === "finished" || phase === "scopeDone")
-  const narrowed =
-    session.scope !== null &&
-    session.scope.id !== session.root.id &&
-    phase !== "finished"
-  const page = logTargetOf(timer)
-  const took = heldSeconds(session.run, page, session.now)
-  const PrimaryIcon = primaryIcons[primary.icon]
-  // One line that wraps when the column is narrow: the main action keeps its clock, and
-  // the full-screen and menu buttons move down together, staying on the right.
+  const idle = !live && !done && !finished
+  const reading = readingOf(timer, { live, ended, done, finished })
+  const part = narrowedTo(session)
+  const ownLength =
+    idle &&
+    !part &&
+    session.leaves.length === 1 &&
+    current?.node.id === session.root.id
+      ? current.node
+      : null
+  const running = live && phase === "running"
   return (
     <div
       className={cn(
-        "flex min-h-8 min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1",
+        "@container/timer flex min-h-8 min-w-0 items-center gap-1",
         className
       )}
     >
-      {live ? (
-        <span className="flex shrink-0 items-center gap-1.5">
-          {!ended ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="shrink-0 max-md:h-10"
-              disabled={primary.disabled}
-              onClick={() => act(primary.action)}
-            >
-              <PrimaryIcon
-                data-icon="inline-start"
-                className={filledIcon(primary.icon)}
-              />
-              {primary.label}
-            </Button>
-          ) : null}
-          <Clock timer={timer} className="text-sm" />
-        </span>
-      ) : null}
-      {ended ? <PausedLabel ended /> : null}
-      {done ? (
-        <>
-          {took > 0 ? (
-            <span className="shrink-0 text-sm">
-              Took <span className="tabular-nums">{clock(took)}</span>
-            </span>
-          ) : null}
+      <div className="flex min-w-0 flex-1 items-center gap-1 max-md:gap-1.5">
+        {idle || (live && !ended) ? (
+          <PlayToggle
+            label={idle ? "Start" : primary.label}
+            look={running ? "pause" : idle ? "play" : "resume"}
+            disabled={primary.disabled}
+            onClick={() =>
+              act(idle ? { kind: part ? "play" : "playAll" } : primary.action)
+            }
+          />
+        ) : null}
+        {ownLength ? (
+          <LengthReading timer={timer} node={ownLength} reading={reading} />
+        ) : part && !done ? (
+          <PartReading
+            timer={timer}
+            part={part}
+            reading={reading}
+            tone={running ? "running" : live ? "paused" : "other"}
+          />
+        ) : (
+          <span className={readingClassName}>
+            <ReadingText reading={reading} />
+          </span>
+        )}
+      </div>
+      <div className="flex shrink-0 items-center gap-0.5">
+        {done ? (
           <Button
             ref={addRef}
             type="button"
             variant="outline"
             size="sm"
-            className="shrink-0 max-md:h-10"
+            className="px-1.5 max-md:h-9 max-md:px-2"
             onClick={() => offer.show("timer")}
           >
-            <Plus data-icon="inline-start" />
             Add time
           </Button>
-        </>
-      ) : null}
-      {!live && !done && finished ? <DoneLine timer={timer} /> : null}
-      {!live && !done && !finished ? <IdleValue timer={timer} /> : null}
-      {/* The chosen part shares a line with the buttons and shortens rather than wrap. */}
-      <div className="flex min-w-0 flex-1 items-center gap-1.5">
-        {narrowed && (live || phase === "scopeDone") ? (
-          <span className="min-w-0 truncate text-sm text-muted-foreground">
-            Only {session.scope?.title}
-          </span>
         ) : null}
-        <div className="ml-auto flex shrink-0 items-center">
-          {live ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className="shrink-0 text-muted-foreground max-md:size-10"
-              aria-label="Full screen"
-              title="Full screen"
-              onClick={() => fullScreen.enter(timer.routine.id)}
-            >
-              <Maximize2 />
-            </Button>
-          ) : null}
-          <TimerMenu timer={timer} surface={surface} done={done} />
-        </div>
+        {live ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="shrink-0 text-muted-foreground max-md:size-9 @max-[12rem]/timer:max-md:size-7"
+            aria-label="Full screen"
+            title="Full screen"
+            onClick={() => fullScreen.enter(timer.routine.id)}
+          >
+            <Maximize2 />
+          </Button>
+        ) : null}
+        <TimerMenu timer={timer} surface={surface} done={done} />
       </div>
     </div>
-  )
-}
-
-function IdleValue({ timer }: { timer: Routine }) {
-  const { session, act } = timer
-  const { current } = session
-  const only =
-    session.scope && session.scope.id !== session.root.id ? session.scope : null
-  const leaves = only ? session.scoped : session.leaves
-  const planned = plannedSeconds(leaves)
-  const ownTimer = leaves.length === 1 && current?.node.id === session.root.id
-  const startable = !controlsOf(session).primary.disabled
-  return (
-    <>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="shrink-0 max-md:h-10"
-        title={startable ? undefined : "Every activity in it is canceled"}
-        disabled={!startable}
-        onClick={() => act({ kind: only ? "play" : "playAll" })}
-      >
-        <Play data-icon="inline-start" className="fill-current" />
-        Start
-      </Button>
-      {ownTimer && current ? (
-        <TimerField
-          workspaceId={timer.workspaceId}
-          node={current.node}
-          variant="compact"
-          className="h-7 gap-1 px-2 max-md:h-10"
-        />
-      ) : (
-        <>
-          {planned > 0 ? (
-            <span className="shrink-0 text-sm text-muted-foreground tabular-nums">
-              {clock(planned)}
-            </span>
-          ) : null}
-          {only ? (
-            <span className="min-w-0 truncate text-sm text-muted-foreground">
-              Only {only.title}
-            </span>
-          ) : null}
-        </>
-      )}
-    </>
   )
 }
 
@@ -1171,7 +1406,7 @@ function TimerMenu({
               variant="ghost"
               size="icon-sm"
               className={cn(
-                "shrink-0 text-muted-foreground max-md:size-10",
+                "shrink-0 text-muted-foreground max-md:size-9 @max-[12rem]/timer:max-md:size-7",
                 className
               )}
               aria-label="More timer actions"

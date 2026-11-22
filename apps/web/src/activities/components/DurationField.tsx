@@ -6,6 +6,7 @@ import {
   EMPTY,
   backspace,
   deleteForward,
+  inputEdit,
   replacedValue,
   tidyValue,
   toNextGroup,
@@ -94,13 +95,19 @@ function DurationDigits({
           commit(input, replacedValue(input.value, shown), report)
           return
         }
-        const caret = input.selectionStart ?? 0
-        const edit = native.inputType.startsWith("delete")
-          ? backspace(shown, caret + 1)
-          : native.data && /^\d$/.test(native.data)
-            ? typeDigit(shown, caret - 1, native.data)
-            : { value: shown, caret: Math.max(0, caret - 1) }
-        commit(input, edit, report)
+        commit(
+          input,
+          inputEdit(
+            {
+              value: input.value,
+              caret: input.selectionStart ?? 0,
+              type: native.inputType,
+              data: native.data,
+            },
+            shown
+          ),
+          report
+        )
       }}
       onBlur={() => {
         if (draft === null) return

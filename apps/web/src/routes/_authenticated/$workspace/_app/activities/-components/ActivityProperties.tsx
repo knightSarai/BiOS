@@ -393,7 +393,7 @@ function TimerProperty({
           offer={offer}
           addRef={addRef}
           surface={addTime === "popover" ? "panel" : "phone"}
-          className="px-1"
+          className="pl-1"
         />
       </Property>
       <AddTime

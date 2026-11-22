@@ -1003,7 +1003,7 @@ function ReadingText({ reading }: { reading: Reading }) {
           aria-hidden
           className={cn(
             "contents",
-            reading.mark === "done" && "@max-[12rem]/timer:hidden"
+            reading.mark === "done" && "max-md:@max-[13rem]/timer:hidden"
           )}
         >
           {readingMarks[reading.mark]}
@@ -1340,7 +1340,7 @@ function TimerValue({
             type="button"
             variant="ghost"
             size="icon-sm"
-            className="shrink-0 text-muted-foreground max-md:size-9 @max-[12rem]/timer:max-md:size-7"
+            className="shrink-0 text-muted-foreground max-md:size-9 @max-[13rem]/timer:max-md:size-7"
             aria-label="Full screen"
             title="Full screen"
             onClick={() => fullScreen.enter(timer.routine.id)}
@@ -1406,7 +1406,7 @@ function TimerMenu({
               variant="ghost"
               size="icon-sm"
               className={cn(
-                "shrink-0 text-muted-foreground max-md:size-9 @max-[12rem]/timer:max-md:size-7",
+                "shrink-0 text-muted-foreground max-md:size-9 @max-[13rem]/timer:max-md:size-7",
                 className
               )}
               aria-label="More timer actions"

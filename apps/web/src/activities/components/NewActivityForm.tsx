@@ -633,7 +633,16 @@ function NewActivityForm({
                   workspaceId={workspace.id}
                   onChange={(typeId) => {
                     field.handleChange(typeId)
-                    form.setFieldValue("fields", {})
+                    const kept = new Set(
+                      types
+                        ?.find((candidate) => candidate.id === typeId)
+                        ?.fields.map((definition) => definition.id)
+                    )
+                    form.setFieldValue("fields", (values) =>
+                      Object.fromEntries(
+                        Object.entries(values).filter(([id]) => kept.has(id))
+                      )
+                    )
                   }}
                   trigger={
                     <Button

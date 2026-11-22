@@ -141,7 +141,7 @@ describe("ActivityTypesRepository", () => {
     })
   })
 
-  it("removing a field or an option drops the values that used it", async () => {
+  it("removing an option or deleting a field drops the values that used it", async () => {
     const { types, activities, home, book, author, format } = await setupBook()
     const [paper, ebook] = format.options
     const row = await createOne(
@@ -155,9 +155,33 @@ describe("ActivityTypesRepository", () => {
     expect((await activities.byId(row.id))?.fields).toEqual({
       [author.id]: "Martin Kleppmann",
     })
-    await types.removeField(author.id)
+    await types.deleteField(author.id)
     expect((await activities.byId(row.id))?.fields).toEqual({})
     expect(await types.fields(book.id)).toHaveLength(1)
+    expect(await types.fieldById(author.id)).toBeNull()
+  })
+
+  it("removing a field from a type keeps the values activities hold for it", async () => {
+    const { types, activities, home, book, author } = await setupBook()
+    const row = await createOne(
+      activities,
+      newActivity(home.id, "DDIA", {
+        typeId: book.id,
+        fields: { [author.id]: "Martin Kleppmann" },
+      })
+    )
+    await types.unlinkField(book.id, author.id)
+    expect(
+      (await types.fields(book.id)).map((field) => field.id)
+    ).not.toContain(author.id)
+    expect(await types.fieldById(author.id)).not.toBeNull()
+    expect((await activities.byId(row.id))?.fields).toEqual({
+      [author.id]: "Martin Kleppmann",
+    })
+    await types.linkField(book.id, author.id)
+    expect((await types.fields(book.id)).map((field) => field.id)).toContain(
+      author.id
+    )
   })
 
   it("removing one multiple-choice option keeps the rest of each selection", async () => {
@@ -220,7 +244,7 @@ describe("ActivityTypesRepository", () => {
     expect(saved?.options).toEqual([{ id: paper?.id, label: "Paper" }])
   })
 
-  it("deleting a type leaves its activities with no type and no field values", async () => {
+  it("deleting a type leaves its activities with no type and keeps their values", async () => {
     const { types, activities, home, book, author } = await setupBook()
     const row = await createOne(
       activities,
@@ -234,11 +258,10 @@ describe("ActivityTypesRepository", () => {
     await types.delete(book.id)
     expect(await types.byId(book.id)).toBeNull()
     expect(await types.fields(book.id)).toEqual([])
-    expect(await activities.byId(row.id)).toMatchObject({
-      typeId: null,
-      fields: {},
-      status: "progress",
-    })
+    expect(await types.fieldById(author.id)).not.toBeNull()
+    const after = await activities.byId(row.id)
+    expect(after).toMatchObject({ typeId: null, status: "progress" })
+    expect(after?.fields).toEqual({ [author.id]: "Martin Kleppmann" })
   })
 
   it("never reads or changes another workspace's types", async () => {
@@ -247,9 +270,12 @@ describe("ActivityTypesRepository", () => {
     expect(await other.byId(book.id)).toBeNull()
     expect(await other.list()).toEqual([])
     expect(await other.fields(book.id)).toEqual([])
+    expect(await other.library()).toEqual([])
     await other.renameField(author.id, "Hijacked")
-    await other.removeField(author.id)
+    await other.unlinkField(book.id, author.id)
+    await other.deleteField(author.id)
     await other.delete(book.id)
+    await expect(other.linkField(book.id, author.id)).rejects.toThrow()
     await expect(
       other.addField(book.id, { name: "Sneaky", kind: "text" })
     ).rejects.toThrow()
@@ -356,7 +382,7 @@ describe("activities with a type, fields and a due date", () => {
     ).rejects.toThrow()
   })
 
-  it("changing type drops the old type's values and keeps status and due date", async () => {
+  it("changing type keeps every value, status and due date", async () => {
     const { types, activities, home, book, author } = await setupBook()
     const article = await types.create({ name: "Article", color: "chart-3" })
     const row = await createOne(
@@ -369,12 +395,13 @@ describe("activities with a type, fields and a due date", () => {
       })
     )
     await activities.changeType(row.id, article.id)
-    expect(await activities.byId(row.id)).toMatchObject({
+    const changed = await activities.byId(row.id)
+    expect(changed).toMatchObject({
       typeId: article.id,
-      fields: {},
       status: "progress",
       dueDate: "2026-11-30",
     })
+    expect(changed?.fields).toEqual({ [author.id]: "Martin Kleppmann" })
     await activities.changeType(row.id, null)
     expect((await activities.byId(row.id))?.typeId).toBeNull()
   })
@@ -415,7 +442,7 @@ describe("restoring a deleted activity after its type changed", () => {
     )
     const snapshot = await activities.delete(row.id)
     if (!snapshot) throw new Error("Nothing was deleted")
-    await types.removeField(author.id)
+    await types.deleteField(author.id)
     await activities.restore(snapshot)
     expect((await activities.byId(row.id))?.fields).toEqual({
       [format.id]: format.options[0]?.id,
@@ -1310,5 +1337,56 @@ describe("upgrading from version 13", () => {
     )
     expect((await db.timeEntries.get("solo-running"))?.endedAt).toBeNull()
     expect((await db.routineRuns.get("plan"))?.replay).toEqual([])
+  })
+})
+
+describe("upgrading from version 15", () => {
+  it("moves each type's fields into the field library with the same ids", async () => {
+    const name = `activities-upgrade-16-${crypto.randomUUID()}`
+    const old = new Dexie(name, { addons: [yDexie] })
+    old.version(15).stores({
+      activityTypes: "id, workspaceId",
+      activityTypeFields: "id, [workspaceId+typeId]",
+    })
+    await old.table("activityTypes").add({
+      id: "book",
+      workspaceId: "ws-1",
+      name: "Book",
+      color: "chart-1",
+      icon: null,
+      statusNames: {},
+      timer: null,
+      createdAt: "2026-10-01T00:00:00.000Z",
+      updatedAt: "2026-10-01T00:00:00.000Z",
+    })
+    await old.table("activityTypeFields").add({
+      id: "author",
+      workspaceId: "ws-1",
+      typeId: "book",
+      name: "Author",
+      kind: "text",
+      options: [],
+      sortKey: "a0",
+      createdAt: "2026-10-01T00:00:00.000Z",
+      updatedAt: "2026-10-02T00:00:00.000Z",
+    })
+    old.close()
+
+    const db = createLocalDb(name)
+    openDbs.push(db)
+    const types = new ActivityTypesRepository(db, { workspaceId: "ws-1" })
+    expect(await types.byId("book")).toMatchObject({ parentId: null })
+    expect(await types.fieldById("author")).toEqual({
+      id: "author",
+      workspaceId: "ws-1",
+      name: "Author",
+      kind: "text",
+      options: [],
+      createdAt: "2026-10-01T00:00:00.000Z",
+      updatedAt: "2026-10-02T00:00:00.000Z",
+    })
+    expect((await types.fields("book")).map((field) => field.id)).toEqual([
+      "author",
+    ])
   })
 })

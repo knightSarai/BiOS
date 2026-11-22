@@ -753,6 +753,13 @@ const seedWorkout = async () => {
     (await db.areas.where("workspaceId").equals(workspace).first()) ??
     (await areas.ensureDefault("Training"))
 
+  type MadeType = {
+    id: string
+    ids: Record<string, string>
+    options: Record<string, Record<string, string>>
+  }
+
+  // A subtype also answers to its parent's field keys, since it inherits those fields.
   const makeType = async (
     name: string,
     color: "chart-1" | "chart-2" | "chart-3" | "chart-4" | "chart-5",
@@ -762,14 +769,21 @@ const seedWorkout = async () => {
       name: string
       kind: "number" | "rating" | "text" | "choice"
       options?: string[]
-    }[]
-  ) => {
-    const type = await types.create({ name, color })
+    }[],
+    parent?: MadeType
+  ): Promise<MadeType> => {
+    const type = await types.create({ name, color, parentId: parent?.id })
     await types.update(type.id, { timer })
-    const ids: Record<string, string> = {}
-    const options: Record<string, Record<string, string>> = {}
+    const ids: Record<string, string> = { ...parent?.ids }
+    const options: Record<string, Record<string, string>> = {
+      ...parent?.options,
+    }
     for (const field of fields) {
-      const row = await types.addField(type.id, field)
+      const existing = (await types.library()).find(
+        (candidate) => candidate.name === field.name
+      )
+      if (existing) await types.linkField(type.id, existing.id)
+      const row = existing ?? (await types.addField(type.id, field))
       ids[field.key] = row.id
       options[field.key] = Object.fromEntries(
         row.options.map((option) => [option.label, option.id])
@@ -785,18 +799,26 @@ const seedWorkout = async () => {
     { key: "load", name: "Training load", kind: "number" as const },
     { key: "effort", name: "Effort", kind: "rating" as const },
   ]
+  const workout = await makeType(
+    "Workout",
+    "chart-1",
+    { mode: "up", sound: "none" },
+    sessionFields
+  )
   const typeIds = {
     boxing: await makeType(
       "Boxing",
       "chart-1",
       { mode: "up", sound: "bell" },
-      sessionFields
+      [],
+      workout
     ),
     strength: await makeType(
       "Strength",
       "chart-2",
       { mode: "up", sound: "none" },
-      sessionFields
+      [],
+      workout
     ),
     round: await makeType(
       "Round",

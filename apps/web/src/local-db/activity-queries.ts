@@ -1,4 +1,5 @@
 import { queryOptions } from "@tanstack/react-query"
+import { resolveTypeFields, typeTree } from "@/activities/type-tree"
 import { ActivitiesRepository } from "./activities"
 import { ActivityTypesRepository } from "./activity-types"
 import { AreasRepository } from "./areas"
@@ -36,6 +37,12 @@ const activityKeys = {
     [...activityKeys.all(workspaceId), "types"] as const,
   type: (workspaceId: string, id: string) =>
     [...activityKeys.types(workspaceId), id] as const,
+  fields: (workspaceId: string) =>
+    [...activityKeys.all(workspaceId), "fields"] as const,
+  library: (workspaceId: string) =>
+    [...activityKeys.fields(workspaceId), "library"] as const,
+  field: (workspaceId: string, id: string) =>
+    [...activityKeys.fields(workspaceId), id] as const,
   children: (workspaceId: string, parentId: string) =>
     [...activityKeys.all(workspaceId), "children", parentId] as const,
   parentCandidates: (workspaceId: string, id: string) =>
@@ -105,14 +112,16 @@ const activityTypesQuery = (workspaceId: string) =>
   queryOptions({
     queryKey: activityKeys.types(workspaceId),
     queryFn: async () => {
-      const types = activityTypesRepository(workspaceId)
-      const rows = await types.list()
-      return Promise.all(
-        rows.map(async (type) => ({
-          ...type,
-          fields: await types.fields(type.id),
-        }))
-      )
+      const repository = activityTypesRepository(workspaceId)
+      const [types, links, fields] = await Promise.all([
+        repository.list(),
+        repository.typeFieldLinks(),
+        repository.library(),
+      ])
+      return typeTree(types).map((type) => ({
+        ...type,
+        fields: resolveTypeFields(types, links, fields, type.id),
+      }))
     },
     networkMode: "always",
     staleTime: 0,
@@ -125,12 +134,73 @@ const activityTypeQuery = (workspaceId: string, id: string) =>
       const types = activityTypesRepository(workspaceId)
       const type = await types.byId(id)
       if (!type) return null
-      const [fields, activityCount] = await Promise.all([
+      const [fields, links, activityCount] = await Promise.all([
         types.fields(id),
+        types.typeLinks(id),
         types.activityCount(id),
       ])
-      return { type, fields, activityCount }
+      const ownFieldIds = links.map((link) => link.fieldId)
+      return { type, fields, ownFieldIds, activityCount }
     },
+    networkMode: "always",
+    staleTime: 0,
+  })
+
+const activityFieldLibraryQuery = (workspaceId: string) =>
+  queryOptions({
+    queryKey: activityKeys.library(workspaceId),
+    queryFn: () => activityTypesRepository(workspaceId).library(),
+    networkMode: "always",
+    staleTime: 0,
+  })
+
+// Counting values reads every activity, so only the settings pages ask for it.
+const activityFieldsQuery = (workspaceId: string) =>
+  queryOptions({
+    queryKey: activityKeys.fields(workspaceId),
+    queryFn: async () => {
+      const repository = activityTypesRepository(workspaceId)
+      const [fields, usage] = await Promise.all([
+        repository.library(),
+        repository.fieldUsage(),
+      ])
+      return fields.map((field) => ({
+        ...field,
+        typeIds: usage.get(field.id)?.typeIds ?? [],
+        valueCount: usage.get(field.id)?.valueCount ?? 0,
+      }))
+    },
+    networkMode: "always",
+    staleTime: 0,
+  })
+
+const activityFieldQuery = (workspaceId: string, id: string) =>
+  queryOptions({
+    queryKey: activityKeys.field(workspaceId, id),
+    queryFn: async () => {
+      const repository = activityTypesRepository(workspaceId)
+      const field = await repository.fieldById(id)
+      if (!field) return null
+      const usage = (await repository.fieldUsage()).get(id)
+      return {
+        field,
+        typeIds: usage?.typeIds ?? [],
+        valueCount: usage?.valueCount ?? 0,
+      }
+    },
+    networkMode: "always",
+    staleTime: 0,
+  })
+
+const optionValueCountQuery = (
+  workspaceId: string,
+  fieldId: string,
+  optionId: string
+) =>
+  queryOptions({
+    queryKey: [...activityKeys.field(workspaceId, fieldId), "option", optionId],
+    queryFn: () =>
+      activityTypesRepository(workspaceId).optionValueCount(fieldId, optionId),
     networkMode: "always",
     staleTime: 0,
   })
@@ -170,6 +240,9 @@ const activeRoutineQuery = (workspaceId: string) =>
 export {
   activeRoutineQuery,
   activitiesRepository,
+  activityFieldLibraryQuery,
+  activityFieldQuery,
+  activityFieldsQuery,
   activityTypeQuery,
   activityTypesQuery,
   activityTypesRepository,
@@ -179,6 +252,7 @@ export {
   activitySummaryQuery,
   areasQuery,
   areasRepository,
+  optionValueCountQuery,
   parentCandidatesQuery,
   routineQuery,
   routinesRepository,

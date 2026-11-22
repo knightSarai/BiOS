@@ -1,5 +1,11 @@
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router"
-import { ChevronLeft, SlidersHorizontal, Settings2, Tag } from "lucide-react"
+import {
+  ChevronLeft,
+  SlidersHorizontal,
+  Settings2,
+  Tag,
+  TextCursorInput,
+} from "lucide-react"
 import type { NavSection } from "@layout/nav-types"
 import { AppShell, MobileNavButton } from "@layout/core/AppShell"
 import { resolveNav } from "@layout/resolve-nav"
@@ -28,6 +34,11 @@ const nav: NavSection[] = [
         icon: Tag,
         label: "Activity types",
         route: "/settings/activity-types",
+      },
+      {
+        icon: TextCursorInput,
+        label: "Fields",
+        route: "/settings/fields",
       },
     ],
   },

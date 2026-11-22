@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 import type { FieldKind } from "@/activities/fields"
 import type { ActivityStatus } from "@/activities/status"
 import type { ActivityTypeChanges, NewActivityType } from "./activity-types"
@@ -9,7 +10,7 @@ import {
   routinesRepository,
 } from "./activity-queries"
 
-// Field and type changes can rewrite activities' values, so activity queries refresh too.
+// Field and type changes show on activities, so activity queries refresh too.
 const useInvalidateActivities = (workspaceId: string) => {
   const queryClient = useQueryClient()
   return () =>
@@ -89,6 +90,26 @@ const useDeleteActivityType = (workspaceId: string) => {
   })
 }
 
+const useSetTypeParent = (workspaceId: string) => {
+  const invalidate = useInvalidateActivities(workspaceId)
+  return useMutation({
+    networkMode: "always",
+    mutationFn: ({ id, parentId }: { id: string; parentId: string | null }) =>
+      activityTypesRepository(workspaceId).setParent(id, parentId),
+    onSuccess: invalidate,
+  })
+}
+
+const useCreateField = (workspaceId: string) => {
+  const invalidate = useInvalidateActivities(workspaceId)
+  return useMutation({
+    networkMode: "always",
+    mutationFn: (field: { name: string; kind: FieldKind }) =>
+      activityTypesRepository(workspaceId).createField(field),
+    onSuccess: invalidate,
+  })
+}
+
 const useAddTypeField = (workspaceId: string) => {
   const invalidate = useInvalidateActivities(workspaceId)
   return useMutation({
@@ -106,13 +127,38 @@ const useAddTypeField = (workspaceId: string) => {
   })
 }
 
-const useRenameTypeField = (workspaceId: string) => {
+const useLinkTypeField = (workspaceId: string) => {
+  const invalidate = useInvalidateActivities(workspaceId)
+  return useMutation({
+    networkMode: "always",
+    mutationFn: ({ typeId, fieldId }: { typeId: string; fieldId: string }) =>
+      activityTypesRepository(workspaceId).linkField(typeId, fieldId),
+    onSuccess: invalidate,
+    onError: () => toast.error("Couldn't add the field."),
+  })
+}
+
+const useUnlinkTypeField = (workspaceId: string) => {
+  const invalidate = useInvalidateActivities(workspaceId)
+  return useMutation({
+    networkMode: "always",
+    mutationFn: ({ typeId, fieldId }: { typeId: string; fieldId: string }) =>
+      activityTypesRepository(workspaceId).unlinkField(typeId, fieldId),
+    onSuccess: invalidate,
+  })
+}
+
+const useRenameField = (workspaceId: string) => {
   const invalidate = useInvalidateActivities(workspaceId)
   return useMutation({
     networkMode: "always",
     mutationFn: ({ id, name }: { id: string; name: string }) =>
       activityTypesRepository(workspaceId).renameField(id, name),
     onSuccess: invalidate,
+    onError: (error) =>
+      toast.error(
+        error instanceof Error ? error.message : "Couldn't rename the field."
+      ),
   })
 }
 
@@ -143,23 +189,27 @@ const useChangeFieldOption = (workspaceId: string) => {
   })
 }
 
-const useRemoveTypeField = (workspaceId: string) => {
+const useDeleteField = (workspaceId: string) => {
   const invalidate = useInvalidateActivities(workspaceId)
   return useMutation({
     networkMode: "always",
     mutationFn: (id: string) =>
-      activityTypesRepository(workspaceId).removeField(id),
+      activityTypesRepository(workspaceId).deleteField(id),
     onSuccess: invalidate,
   })
 }
 
 export {
   useAddTypeField,
-  useCreateActivityType,
-  useDeleteActivityType,
-  useRemoveTypeField,
-  useRenameTypeField,
-  useRenameTypeStatus,
   useChangeFieldOption,
+  useCreateActivityType,
+  useCreateField,
+  useDeleteActivityType,
+  useDeleteField,
+  useLinkTypeField,
+  useRenameField,
+  useRenameTypeStatus,
+  useSetTypeParent,
+  useUnlinkTypeField,
   useUpdateActivityType,
 }

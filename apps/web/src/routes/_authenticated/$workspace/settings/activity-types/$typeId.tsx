@@ -6,20 +6,32 @@ import { TypeIcon } from "@/activities/components/TypeIcon"
 import { DEFAULT_TIMER } from "@/activities/timer"
 import { NotFound } from "@/components/common/NotFound"
 import { useUpdateActivityType } from "@/local-db/activity-type-mutations"
-import { activityTypeQuery } from "@/local-db/activity-queries"
+import {
+  activityFieldsQuery,
+  activityTypeQuery,
+  activityTypesQuery,
+} from "@/local-db/activity-queries"
 import { SettingsPage, SettingsSection } from "../-components/SettingsPage"
 import { CommitInput } from "./-components/CommitInput"
 import { DeleteTypeDialog } from "./-components/DeleteTypeDialog"
 import { FieldsEditor } from "./-components/FieldsEditor"
+import { TypePlacement } from "./-components/TypePlacement"
 import { StatusNamesEditor } from "./-components/StatusNamesEditor"
 
 export const Route = createFileRoute(
   "/_authenticated/$workspace/settings/activity-types/$typeId"
 )({
   loader: ({ context, params }) =>
-    context.queryClient.ensureQueryData(
-      activityTypeQuery(context.workspace.id, params.typeId)
-    ),
+    Promise.all([
+      context.queryClient.ensureQueryData(
+        activityTypeQuery(context.workspace.id, params.typeId)
+      ),
+      context.queryClient.ensureQueryData(
+        activityTypesQuery(context.workspace.id)
+      ),
+      // Fresh, since a stale zero would let an option go without the confirm.
+      context.queryClient.fetchQuery(activityFieldsQuery(context.workspace.id)),
+    ]),
   component: ActivityTypePage,
 })
 
@@ -27,6 +39,7 @@ function ActivityTypePage() {
   const { workspace } = Route.useRouteContext()
   const { typeId } = Route.useParams()
   const { data } = useSuspenseQuery(activityTypeQuery(workspace.id, typeId))
+  const { data: types } = useSuspenseQuery(activityTypesQuery(workspace.id))
   const updateType = useUpdateActivityType(workspace.id)
 
   if (!data) {
@@ -37,7 +50,9 @@ function ActivityTypePage() {
       </NotFound>
     )
   }
-  const { type, fields, activityCount } = data
+  const { type, fields, ownFieldIds, activityCount } = data
+  const typeNames = new Map(types.map((entry) => [entry.id, entry.name]))
+  const subtypes = types.filter((entry) => entry.parentId === type.id)
 
   return (
     <SettingsPage title={type.name}>
@@ -68,6 +83,9 @@ function ActivityTypePage() {
           />
         </div>
       </SettingsSection>
+      <SettingsSection title="Parent and subtypes">
+        <TypePlacement type={type} types={types} workspace={workspace} />
+      </SettingsSection>
       <SettingsSection
         title="Fields"
         description="Every field shows when you create an activity of this type."
@@ -75,8 +93,9 @@ function ActivityTypePage() {
         <FieldsEditor
           typeId={type.id}
           fields={fields}
-          activityCount={activityCount}
-          workspaceId={workspace.id}
+          ownFieldIds={ownFieldIds}
+          typeNames={typeNames}
+          workspace={workspace}
         />
       </SettingsSection>
       <SettingsSection
@@ -102,6 +121,7 @@ function ActivityTypePage() {
       </SettingsSection>
       <DeleteTypeDialog
         type={type}
+        subtypes={subtypes}
         activityCount={activityCount}
         workspace={workspace}
       />

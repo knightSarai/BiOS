@@ -66,15 +66,16 @@ const valueSchema = (field: FieldDefinition) => {
 
 class InvalidFieldValueError extends Error {}
 
+const withoutValue = (values: FieldValues, fieldId: string): FieldValues =>
+  Object.fromEntries(Object.entries(values).filter(([id]) => id !== fieldId))
+
 // Absent means unset, so a cleared value is dropped rather than stored as null.
 const setFieldValue = (
   values: FieldValues,
   field: FieldDefinition,
   value: unknown
 ): FieldValues => {
-  const rest = Object.fromEntries(
-    Object.entries(values).filter(([id]) => id !== field.id)
-  )
+  const rest = withoutValue(values, field.id)
   if (value === null || value === undefined) return rest
   const parsed = valueSchema(field).safeParse(value)
   if (!parsed.success) {
@@ -94,8 +95,7 @@ const parseFieldValues = (
     {}
   )
 
-// Values that no longer fit their field (deleted field, removed option) are dropped silently;
-// only a deliberate change of type warns first.
+// A value that no longer fits its field (removed option) is dropped; the field's other values stay.
 const withoutRemovedOptions = (field: FieldDefinition, value: unknown) =>
   field.kind === "multiChoice" && Array.isArray(value)
     ? value.filter((id) => field.options.some((option) => option.id === id))
@@ -111,6 +111,15 @@ const keepValidValues = (
     )
     return parsed.success ? { ...result, [field.id]: parsed.data } : result
   }, {})
+
+// Checks one field's value after the field changed, leaving every other value as it is.
+const revalidateValue = (
+  field: FieldDefinition,
+  values: FieldValues
+): FieldValues => ({
+  ...withoutValue(values, field.id),
+  ...keepValidValues([field], values),
+})
 
 const invalidFields = <Field extends FieldDefinition>(
   fields: Field[],
@@ -149,12 +158,6 @@ const formatFieldValue = (field: FieldDefinition, value: FieldValue) => {
   }
 }
 
-// Fields belong to one type, so a type change loses every value the old type had set.
-const valuesLostOnTypeChange = <Field extends FieldDefinition>(
-  fields: Field[],
-  values: FieldValues
-) => fields.filter((field) => field.id in values)
-
 export {
   FIELD_KINDS,
   InvalidFieldValueError,
@@ -164,7 +167,8 @@ export {
   keepValidValues,
   kindHasOptions,
   parseFieldValues,
+  revalidateValue,
   setFieldValue,
-  valuesLostOnTypeChange,
+  withoutValue,
 }
 export type { FieldDefinition, FieldKind, FieldOption, FieldValue, FieldValues }

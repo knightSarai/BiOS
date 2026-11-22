@@ -467,6 +467,7 @@ class RoutinesRepository {
       this.db.areas,
       this.db.activities,
       this.db.activityTypes,
+      this.db.activityFields,
       this.db.activityTypeFields,
       this.db.timeEntries,
       this.db.routineRuns,

@@ -17,10 +17,12 @@ const deleteTypeOpenAtom = atom(false)
 
 function DeleteTypeDialog({
   type,
+  subtypes,
   activityCount,
   workspace,
 }: {
   type: { id: string; name: string }
+  subtypes: { name: string }[]
   activityCount: number
   workspace: { id: string; slug: string }
 }) {
@@ -32,8 +34,10 @@ function DeleteTypeDialog({
     setOpen(false)
     try {
       await deleteType.mutateAsync(type.id)
-    } catch {
-      toast.error(`Couldn't delete ${type.name}.`)
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : `Couldn't delete ${type.name}.`
+      )
       return
     }
     toast.success(`Deleted ${type.name}`)
@@ -56,16 +60,22 @@ function DeleteTypeDialog({
         <DialogHeader>
           <DialogTitle>Delete {type.name}?</DialogTitle>
           <DialogDescription>
-            {activityCount === 0
-              ? "No activity uses this type."
-              : `${activityCount === 1 ? "1 activity" : `${activityCount} activities`} will have no type, and their ${type.name} field values will be deleted.`}
+            {subtypes.length > 0
+              ? `Move or delete its subtypes first: ${subtypes.map((subtype) => subtype.name).join(", ")}.`
+              : activityCount === 0
+                ? "No activity uses this type."
+                : `${activityCount === 1 ? "1 activity" : `${activityCount} activities`} will have no type. Their field values stay.`}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <DialogClose render={<Button variant="outline" />}>
             Cancel
           </DialogClose>
-          <Button variant="destructive" onClick={() => void confirm()}>
+          <Button
+            variant="destructive"
+            disabled={subtypes.length > 0}
+            onClick={() => void confirm()}
+          >
             Delete type
           </Button>
         </DialogFooter>

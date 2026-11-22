@@ -152,6 +152,7 @@ type RoutineRunRow = {
 type ActivityTypeRow = {
   id: string
   workspaceId: string
+  parentId: string | null
   name: string
   color: TypeColor
   icon: string | null
@@ -161,16 +162,24 @@ type ActivityTypeRow = {
   updatedAt: UtcDatetime
 }
 
+type ActivityFieldRow = {
+  id: string
+  workspaceId: string
+  name: string
+  kind: FieldKind
+  options: FieldOption[]
+  createdAt: UtcDatetime
+  updatedAt: UtcDatetime
+}
+
+// Links a workspace field to a type; the type's subtypes inherit it.
 type ActivityTypeFieldRow = {
   id: string
   workspaceId: string
   typeId: string
-  name: string
-  kind: FieldKind
-  options: FieldOption[]
+  fieldId: string
   sortKey: string
   createdAt: UtcDatetime
-  updatedAt: UtcDatetime
 }
 
 type GoalRow = {
@@ -193,6 +202,7 @@ type LocalDb = Dexie & {
   areas: EntityTable<AreaRow, "id">
   activities: EntityTable<ActivityRow, "id">
   activityTypes: EntityTable<ActivityTypeRow, "id">
+  activityFields: EntityTable<ActivityFieldRow, "id">
   activityTypeFields: EntityTable<ActivityTypeFieldRow, "id">
   goals: EntityTable<GoalRow, "id">
   timeEntries: EntityTable<TimeEntryRow, "id">
@@ -683,6 +693,47 @@ const createLocalDb = (name: string): LocalDb => {
             : "pending"
       })
   })
+  // Fields move out of their type into the workspace's field library, keeping their ids so
+  // the values activities hold stay attached.
+  db.version(16)
+    .stores({
+      activityFields: "id, workspaceId",
+      activityTypeFields:
+        "id, [workspaceId+typeId], [workspaceId+fieldId], &[workspaceId+typeId+fieldId]",
+    })
+    .upgrade(async (tx) => {
+      await tx
+        .table<ActivityTypeRow, string>("activityTypes")
+        .toCollection()
+        .modify((row) => {
+          row.parentId = null
+        })
+      type OldFieldRow = Omit<ActivityTypeFieldRow, "fieldId"> &
+        Pick<ActivityFieldRow, "name" | "kind" | "options" | "updatedAt">
+      const links = tx.table<ActivityTypeFieldRow, string>("activityTypeFields")
+      const old = (await links.toArray()) as unknown as OldFieldRow[]
+      await tx.table<ActivityFieldRow, string>("activityFields").bulkAdd(
+        old.map((row) => ({
+          id: row.id,
+          workspaceId: row.workspaceId,
+          name: row.name,
+          kind: row.kind,
+          options: row.options,
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
+        }))
+      )
+      await links.bulkPut(
+        old.map((row) => ({
+          id: row.id,
+          workspaceId: row.workspaceId,
+          typeId: row.typeId,
+          fieldId: row.id,
+          sortKey: row.sortKey,
+          createdAt: row.createdAt,
+        }))
+      )
+    })
   return db
 }
 
@@ -695,6 +746,7 @@ const getLocalDb = () => {
 
 export { createLocalDb, getLocalDb, ROOT_FOLDER_ID }
 export type {
+  ActivityFieldRow,
   ActivityOrigin,
   ActivityRow,
   ActivityTypeFieldRow,

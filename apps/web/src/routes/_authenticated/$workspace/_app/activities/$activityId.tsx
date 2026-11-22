@@ -15,7 +15,9 @@ import {
 import { activityKey } from "@/activities/areas"
 import {
   activitiesRepository,
+  activityFieldLibraryQuery,
   activityQuery,
+  activityTypesQuery,
   areasQuery,
 } from "@/local-db/activity-queries"
 import { EntityDocumentsPanel } from "@/notebook/components/EntityDocuments"
@@ -26,10 +28,7 @@ import {
   ActivityProperties,
   ActivityPropertyRows,
 } from "./-components/ActivityProperties"
-import {
-  ActivityFields,
-  ChangeTypeDialog,
-} from "./-components/ActivityTypeFields"
+import { ActivityFields } from "./-components/ActivityTypeFields"
 import { ActivityCrumb } from "./-components/ActivityCrumb"
 import { PropertiesAside } from "./-components/ActivityRoutine"
 import { ParentDialog } from "./-components/ParentDialog"
@@ -46,6 +45,12 @@ export const Route = createFileRoute(
     const [found] = await Promise.all([
       context.queryClient.ensureQueryData(query),
       context.queryClient.ensureQueryData(areasQuery(context.workspace)),
+      context.queryClient.ensureQueryData(
+        activityFieldLibraryQuery(context.workspace.id)
+      ),
+      context.queryClient.ensureQueryData(
+        activityTypesQuery(context.workspace.id)
+      ),
     ])
     if (!found) {
       context.queryClient.removeQueries({ queryKey: query.queryKey })
@@ -180,7 +185,6 @@ function ActivityPage() {
           </PropertiesAside>
         </div>
       </Page.ScrollArea>
-      <ChangeTypeDialog workspaceId={workspace.id} />
       <ParentDialog workspaceId={workspace.id} />
     </Page.Layout>
   )

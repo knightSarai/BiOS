@@ -11,6 +11,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { activityTypesQuery } from "@/local-db/activity-queries"
+import { cn } from "@/lib/utils"
 import {
   SettingsCard,
   SettingsPage,
@@ -18,6 +19,8 @@ import {
 } from "../-components/SettingsPage"
 
 const newTypeOpenAtom = atom(false)
+
+const depthPadding: Record<number, string> = { 2: "pl-10", 3: "pl-16" }
 
 export const Route = createFileRoute(
   "/_authenticated/$workspace/settings/activity-types/"
@@ -74,7 +77,10 @@ function ActivityTypesPage() {
                 key={type.id}
                 to="/$workspace/settings/activity-types/$typeId"
                 params={{ workspace: workspace.slug, typeId: type.id }}
-                className="flex min-h-12 items-center gap-3 px-4 py-2 transition-colors hover:bg-accent max-md:min-h-14"
+                className={cn(
+                  "flex min-h-12 items-center gap-3 px-4 py-2 transition-colors hover:bg-accent max-md:min-h-14",
+                  depthPadding[type.depth]
+                )}
               >
                 <TypeIcon color={type.color} className="size-4" />
                 <span className="flex-1 truncate font-medium">{type.name}</span>

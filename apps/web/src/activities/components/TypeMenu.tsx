@@ -12,7 +12,7 @@ import type { TypeColor } from "../activity-types"
 import { NewTypeForm } from "./NewTypeForm"
 import { TypeIcon } from "./TypeIcon"
 
-type TypeOption = { id: string; name: string; color: TypeColor }
+type TypeOption = { id: string; name: string; color: TypeColor; depth?: number }
 
 type TypeMenuProps = {
   types: TypeOption[]
@@ -20,7 +20,12 @@ type TypeMenuProps = {
   workspaceId: string
   trigger: React.ReactElement
   onChange: (typeId: string | null) => void
+  label?: string
+  noneLabel?: string
+  canCreate?: boolean
 }
+
+const depthPadding: Record<number, string> = { 2: "pl-7", 3: "pl-12" }
 
 const rowClassName =
   "flex min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-accent max-md:min-h-11"
@@ -31,6 +36,9 @@ function TypeMenu({
   workspaceId,
   trigger,
   onChange,
+  label = "Type",
+  noneLabel = "No type",
+  canCreate = true,
 }: TypeMenuProps) {
   // One menu state per instance; useMemo keeps the atom stable across renders.
   const menuAtom = useMemo(
@@ -46,7 +54,10 @@ function TypeMenu({
     if (typeId !== value) onChange(typeId)
     setMenu({ open: false, creating: false })
   }
-  const choices = [{ id: null, name: "No type", color: null }, ...types]
+  const choices = [
+    { id: null, name: noneLabel, color: null, depth: 1 },
+    ...types,
+  ]
 
   return (
     <Popover
@@ -66,13 +77,13 @@ function TypeMenu({
         ) : (
           <>
             <p className="px-2 pt-1.5 pb-1 text-xs text-muted-foreground">
-              Type
+              {label}
             </p>
             {choices.map((option) => (
               <button
                 key={option.id ?? "none"}
                 type="button"
-                className={rowClassName}
+                className={cn(rowClassName, depthPadding[option.depth ?? 1])}
                 onClick={() => pick(option.id)}
               >
                 <TypeIcon color={option.color} />
@@ -90,15 +101,19 @@ function TypeMenu({
                 ) : null}
               </button>
             ))}
-            <Separator className="my-1" />
-            <button
-              type="button"
-              className={cn(rowClassName, "text-muted-foreground")}
-              onClick={() => setMenu({ open: true, creating: true })}
-            >
-              <Plus className="size-3.5" />
-              New type…
-            </button>
+            {canCreate ? (
+              <>
+                <Separator className="my-1" />
+                <button
+                  type="button"
+                  className={cn(rowClassName, "text-muted-foreground")}
+                  onClick={() => setMenu({ open: true, creating: true })}
+                >
+                  <Plus className="size-3.5" />
+                  New type…
+                </button>
+              </>
+            ) : null}
           </>
         )}
       </PopoverContent>

@@ -435,7 +435,6 @@ function ActivityProperties({ activity, workspace }: ActivityPropertiesProps) {
       <Property label="Type">
         <TypeControl
           activity={activity}
-          activityKey={key}
           workspace={workspace}
           className={propertyButtonClassName}
         />
@@ -483,7 +482,10 @@ function ActivityProperties({ activity, workspace }: ActivityPropertiesProps) {
 }
 
 // No "Written in" row: below lg, ActivityOriginLink shows it above the title.
-function ActivityPropertyRows({ activity, workspace }: ActivityPropertiesProps) {
+function ActivityPropertyRows({
+  activity,
+  workspace,
+}: ActivityPropertiesProps) {
   const key = useActivityKey(activity, workspace)
   return (
     <div className="-mx-2 mb-6 flex flex-col text-sm *:min-h-11">
@@ -504,7 +506,6 @@ function ActivityPropertyRows({ activity, workspace }: ActivityPropertiesProps) 
       <Property label="Type">
         <TypeControl
           activity={activity}
-          activityKey={key}
           workspace={workspace}
           className={inlinePropertyButtonClassName}
         />

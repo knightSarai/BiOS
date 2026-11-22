@@ -16,21 +16,31 @@ const newTypeSchema = z.object({
 
 function NewTypeForm({
   workspaceId,
+  parent,
   onCreated,
   onCancel,
 }: {
   workspaceId: string
+  parent?: { id: string; color: TypeColor }
   onCreated: (type: ActivityTypeRow) => void
   onCancel: () => void
 }) {
   const createType = useCreateActivityType(workspaceId)
   const form = useAppForm({
-    defaultValues: { name: "", color: "chart-1" as TypeColor },
+    defaultValues: {
+      name: "",
+      color: parent?.color ?? "chart-1",
+    },
     validators: {
       onSubmit: newTypeSchema,
       onSubmitAsync: async ({ value }) => {
         try {
-          onCreated(await createType.mutateAsync(newTypeSchema.parse(value)))
+          onCreated(
+            await createType.mutateAsync({
+              ...newTypeSchema.parse(value),
+              parentId: parent?.id ?? null,
+            })
+          )
         } catch (error) {
           return {
             form:

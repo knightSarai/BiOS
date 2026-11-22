@@ -6,7 +6,7 @@ import {
   keepValidValues,
   parseFieldValues,
   setFieldValue,
-  valuesLostOnTypeChange,
+  revalidateValue,
   type FieldDefinition,
 } from "./fields"
 
@@ -124,16 +124,19 @@ describe("keepValidValues with multiple choice", () => {
   })
 })
 
-describe("valuesLostOnTypeChange", () => {
-  it("lists the old type's fields that have a value", () => {
-    const lost = valuesLostOnTypeChange([author, pages, rating], {
-      author: "Martin Kleppmann",
-      rating: 4,
+describe("revalidateValue", () => {
+  it("checks only the changed field's value and keeps every other value", () => {
+    const paperOnly = field("format", "choice", ["Paper"])
+    expect(
+      revalidateValue(paperOnly, {
+        format: "opt-1",
+        author: "Martin Kleppmann",
+        elsewhere: 3,
+      })
+    ).toEqual({ author: "Martin Kleppmann", elsewhere: 3 })
+    expect(revalidateValue(paperOnly, { format: "opt-0" })).toEqual({
+      format: "opt-0",
     })
-    expect(lost.map((definition) => definition.id)).toEqual([
-      "author",
-      "rating",
-    ])
   })
 })
 

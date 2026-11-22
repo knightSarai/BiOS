@@ -6,7 +6,7 @@ type CommitInputProps = {
   placeholder?: string
   allowEmpty?: boolean
   className?: string
-  onCommit: (value: string) => void
+  onCommit: (value: string) => unknown
 }
 
 // Uncontrolled so stored data isn't mirrored in client state; the caller keys it by value to reset after a save.
@@ -25,7 +25,10 @@ function CommitInput({
       input.value = value
       return
     }
-    onCommit(next)
+    // A rejected save puts the stored value back, since nothing else re-keys the input.
+    void Promise.resolve(onCommit(next)).catch(() => {
+      input.value = value
+    })
   }
 
   return (

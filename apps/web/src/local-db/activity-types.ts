@@ -7,13 +7,24 @@ import {
 import type { ActivityStatus } from "@/activities/status"
 import { parseTimerConfig, type TimerConfig } from "@/activities/timer"
 import {
-  keepValidValues,
   kindHasOptions,
+  revalidateValue,
+  withoutValue,
   type FieldKind,
   type FieldOption,
 } from "@/activities/fields"
+import {
+  checkTypeParent,
+  resolveTypeFields,
+  subtypeIds,
+} from "@/activities/type-tree"
 import { compareSortKeys, keyBetween } from "@/notebook/sort-keys"
-import type { ActivityTypeFieldRow, ActivityTypeRow, LocalDb } from "./db"
+import type {
+  ActivityFieldRow,
+  ActivityTypeFieldRow,
+  ActivityTypeRow,
+  LocalDb,
+} from "./db"
 
 type ActivityTypesContext = {
   workspaceId: string
@@ -22,6 +33,7 @@ type ActivityTypesContext = {
 type NewActivityType = {
   name: string
   color: TypeColor
+  parentId?: string | null
 }
 
 type ActivityTypeChanges = {
@@ -40,6 +52,8 @@ type NewField = {
 
 type OptionInput = { id?: string; label: string }
 
+class TypeHasSubtypesError extends Error {}
+
 const requireName = (name: string, what: string) => {
   const trimmed = name.trim()
   if (!trimmed) throw new Error(`A ${what} needs a name.`)
@@ -54,6 +68,9 @@ const toOptions = (options: OptionInput[]): FieldOption[] =>
       ? result
       : [...result, { id, label }]
   }, [])
+
+const byFieldName = (a: { name: string }, b: { name: string }) =>
+  a.name.localeCompare(b.name, undefined, { sensitivity: "accent" })
 
 class ActivityTypesRepository {
   constructor(
@@ -74,34 +91,103 @@ class ActivityTypesRepository {
     return row?.workspaceId === this.ctx.workspaceId ? row : null
   }
 
+  // Inherited fields first, root type down, then the type's own.
   async fields(typeId: string) {
-    const rows = await this.db.activityTypeFields
-      .where("[workspaceId+typeId]")
-      .equals([this.ctx.workspaceId, typeId])
-      .toArray()
-    return rows.sort((a, b) => compareSortKeys(a.sortKey, b.sortKey))
+    const [types, links, fields] = await Promise.all([
+      this.list(),
+      this.typeFieldLinks(),
+      this.library(),
+    ])
+    return resolveTypeFields(types, links, fields, typeId)
   }
 
-  private async fieldById(id: string) {
-    const row = await this.db.activityTypeFields.get(id)
+  async library() {
+    const rows = await this.db.activityFields
+      .where("workspaceId")
+      .equals(this.ctx.workspaceId)
+      .toArray()
+    return rows.sort(byFieldName)
+  }
+
+  async fieldById(id: string) {
+    const row = await this.db.activityFields.get(id)
     return row?.workspaceId === this.ctx.workspaceId ? row : null
   }
 
-  async create(type: NewActivityType) {
-    const timestamp = parseUtc(now())
-    const row: ActivityTypeRow = {
-      id: crypto.randomUUID(),
-      workspaceId: this.ctx.workspaceId,
-      name: requireName(type.name, "type"),
-      color: type.color,
-      icon: null,
-      statusNames: {},
-      timer: null,
-      createdAt: timestamp,
-      updatedAt: timestamp,
+  async fieldsByIds(ids: string[]) {
+    const rows = await this.db.activityFields.bulkGet(ids)
+    return rows.filter(
+      (row): row is ActivityFieldRow =>
+        row?.workspaceId === this.ctx.workspaceId
+    )
+  }
+
+  typeFieldLinks() {
+    return this.db.activityTypeFields
+      .where("[workspaceId+typeId]")
+      .between([this.ctx.workspaceId, ""], [this.ctx.workspaceId, "￿"])
+      .toArray()
+  }
+
+  typeLinks(typeId: string) {
+    return this.db.activityTypeFields
+      .where("[workspaceId+typeId]")
+      .equals([this.ctx.workspaceId, typeId])
+      .toArray()
+  }
+
+  async fieldUsage() {
+    const usage = new Map<string, { typeIds: string[]; valueCount: number }>()
+    const entry = (fieldId: string) => {
+      const found = usage.get(fieldId) ?? { typeIds: [], valueCount: 0 }
+      usage.set(fieldId, found)
+      return found
     }
-    await this.db.activityTypes.add(row)
-    return row
+    for (const link of await this.typeFieldLinks())
+      entry(link.fieldId).typeIds.push(link.typeId)
+    await this.db.activities
+      .where("workspaceId")
+      .equals(this.ctx.workspaceId)
+      .each((row) => {
+        for (const fieldId of Object.keys(row.fields))
+          entry(fieldId).valueCount++
+      })
+    return usage
+  }
+
+  async optionValueCount(fieldId: string, optionId: string) {
+    return this.db.activities
+      .where("workspaceId")
+      .equals(this.ctx.workspaceId)
+      .filter((row) => {
+        const value = row.fields[fieldId]
+        return Array.isArray(value)
+          ? value.includes(optionId)
+          : value === optionId
+      })
+      .count()
+  }
+
+  create(type: NewActivityType) {
+    return this.db.transaction("rw", this.db.activityTypes, async () => {
+      const parentId = type.parentId ?? null
+      const timestamp = parseUtc(now())
+      const row: ActivityTypeRow = {
+        id: crypto.randomUUID(),
+        workspaceId: this.ctx.workspaceId,
+        parentId,
+        name: requireName(type.name, "type"),
+        color: type.color,
+        icon: null,
+        statusNames: {},
+        timer: null,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }
+      checkTypeParent([...(await this.list()), row], row.id, parentId)
+      await this.db.activityTypes.add(row)
+      return row
+    })
   }
 
   async update(id: string, changes: ActivityTypeChanges) {
@@ -126,6 +212,17 @@ class ActivityTypesRepository {
     })
   }
 
+  setParent(id: string, parentId: string | null) {
+    return this.db.transaction("rw", this.db.activityTypes, async () => {
+      if (!(await this.byId(id))) return
+      checkTypeParent(await this.list(), id, parentId)
+      await this.db.activityTypes.update(id, {
+        parentId,
+        updatedAt: parseUtc(now()),
+      })
+    })
+  }
+
   // Reads the stored names inside the transaction, so quick renames in a row don't overwrite each other.
   renameStatus(id: string, status: ActivityStatus, name: string) {
     return this.db.transaction("rw", this.db.activityTypes, async () => {
@@ -138,42 +235,109 @@ class ActivityTypesRepository {
     })
   }
 
+  private async requireFreeName(name: string, fieldId: string | null) {
+    const taken = (await this.library()).find(
+      (row) => row.id !== fieldId && byFieldName(row, { name }) === 0
+    )
+    if (taken) {
+      throw new Error(`There is already a field called ${taken.name}.`)
+    }
+  }
+
+  createField(field: NewField) {
+    return this.db.transaction("rw", this.db.activityFields, async () => {
+      const name = requireName(field.name, "field")
+      await this.requireFreeName(name, null)
+      const timestamp = parseUtc(now())
+      const row: ActivityFieldRow = {
+        id: crypto.randomUUID(),
+        workspaceId: this.ctx.workspaceId,
+        name,
+        kind: field.kind,
+        options: kindHasOptions(field.kind)
+          ? toOptions((field.options ?? []).map((label) => ({ label })))
+          : [],
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }
+      await this.db.activityFields.add(row)
+      return row
+    })
+  }
+
   addField(typeId: string, field: NewField) {
     return this.db.transaction(
       "rw",
-      this.db.activityTypes,
-      this.db.activityTypeFields,
+      [
+        this.db.activityTypes,
+        this.db.activityFields,
+        this.db.activityTypeFields,
+      ],
       async () => {
         if (!(await this.byId(typeId))) {
           throw new Error("The type for this field does not exist.")
         }
-        const existing = await this.fields(typeId)
-        const timestamp = parseUtc(now())
-        const row: ActivityTypeFieldRow = {
-          id: crypto.randomUUID(),
-          workspaceId: this.ctx.workspaceId,
-          typeId,
-          name: requireName(field.name, "field"),
-          kind: field.kind,
-          options: kindHasOptions(field.kind)
-            ? toOptions((field.options ?? []).map((label) => ({ label })))
-            : [],
-          sortKey: keyBetween(existing.at(-1)?.sortKey ?? null, null),
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        }
-        await this.db.activityTypeFields.add(row)
+        const row = await this.createField(field)
+        await this.linkField(typeId, row.id)
         return row
       }
     )
   }
 
-  async renameField(fieldId: string, name: string) {
-    const field = await this.fieldById(fieldId)
-    if (!field) return
-    await this.db.activityTypeFields.update(fieldId, {
-      name: requireName(name, "field"),
-      updatedAt: parseUtc(now()),
+  linkField(typeId: string, fieldId: string) {
+    return this.db.transaction(
+      "rw",
+      [
+        this.db.activityTypes,
+        this.db.activityFields,
+        this.db.activityTypeFields,
+      ],
+      async () => {
+        if (!(await this.byId(typeId))) {
+          throw new Error("The type for this field does not exist.")
+        }
+        if (!(await this.fieldById(fieldId))) {
+          throw new Error("That field does not exist.")
+        }
+        if ((await this.fields(typeId)).some((field) => field.id === fieldId)) {
+          return
+        }
+        const own = await this.typeLinks(typeId)
+        const last =
+          own
+            .map((link) => link.sortKey)
+            .sort(compareSortKeys)
+            .at(-1) ?? null
+        const row: ActivityTypeFieldRow = {
+          id: crypto.randomUUID(),
+          workspaceId: this.ctx.workspaceId,
+          typeId,
+          fieldId,
+          sortKey: keyBetween(last, null),
+          createdAt: parseUtc(now()),
+        }
+        await this.db.activityTypeFields.add(row)
+      }
+    )
+  }
+
+  // Activities keep their values; the field just stops showing for the type.
+  async unlinkField(typeId: string, fieldId: string) {
+    await this.db.activityTypeFields
+      .where("[workspaceId+typeId+fieldId]")
+      .equals([this.ctx.workspaceId, typeId, fieldId])
+      .delete()
+  }
+
+  renameField(fieldId: string, name: string) {
+    return this.db.transaction("rw", this.db.activityFields, async () => {
+      if (!(await this.fieldById(fieldId))) return
+      const trimmed = requireName(name, "field")
+      await this.requireFreeName(trimmed, fieldId)
+      await this.db.activityFields.update(fieldId, {
+        name: trimmed,
+        updatedAt: parseUtc(now()),
+      })
     })
   }
 
@@ -206,7 +370,7 @@ class ActivityTypesRepository {
   ) {
     return this.db.transaction(
       "rw",
-      this.db.activityTypeFields,
+      this.db.activityFields,
       this.db.activities,
       async () => {
         const field = await this.fieldById(fieldId)
@@ -214,27 +378,42 @@ class ActivityTypesRepository {
         if (!kindHasOptions(field.kind)) {
           throw new Error("Only choice fields have options.")
         }
-        await this.db.activityTypeFields.update(fieldId, {
-          options: toOptions(change(field.options)),
+        const changed = { ...field, options: toOptions(change(field.options)) }
+        await this.db.activityFields.update(fieldId, {
+          options: changed.options,
           updatedAt: parseUtc(now()),
         })
-        await this.revalidateValues(field.typeId)
+        await this.activitiesWithValue(fieldId).modify((row) => {
+          row.fields = revalidateValue(changed, row.fields)
+        })
       }
     )
   }
 
-  removeField(fieldId: string) {
+  // The only way values go: the field is gone from every type and every activity.
+  deleteField(fieldId: string) {
     return this.db.transaction(
       "rw",
-      this.db.activityTypeFields,
-      this.db.activities,
+      [this.db.activityFields, this.db.activityTypeFields, this.db.activities],
       async () => {
-        const field = await this.fieldById(fieldId)
-        if (!field) return
-        await this.db.activityTypeFields.delete(fieldId)
-        await this.revalidateValues(field.typeId)
+        if (!(await this.fieldById(fieldId))) return
+        await this.db.activityTypeFields
+          .where("[workspaceId+fieldId]")
+          .equals([this.ctx.workspaceId, fieldId])
+          .delete()
+        await this.activitiesWithValue(fieldId).modify((row) => {
+          row.fields = withoutValue(row.fields, fieldId)
+        })
+        await this.db.activityFields.delete(fieldId)
       }
     )
+  }
+
+  private activitiesWithValue(fieldId: string) {
+    return this.db.activities
+      .where("workspaceId")
+      .equals(this.ctx.workspaceId)
+      .filter((row) => fieldId in row.fields)
   }
 
   async activityCount(typeId: string) {
@@ -245,18 +424,24 @@ class ActivityTypesRepository {
       .count()
   }
 
+  // Its activities keep their values and lose only the type.
   delete(typeId: string) {
     return this.db.transaction(
       "rw",
       [this.db.activityTypes, this.db.activityTypeFields, this.db.activities],
       async () => {
-        if (!(await this.byId(typeId))) return
-        const timestamp = parseUtc(now())
+        const type = await this.byId(typeId)
+        if (!type) return
+        if (subtypeIds(await this.list(), typeId).length > 0) {
+          throw new TypeHasSubtypesError(
+            `Move or delete the subtypes of ${type.name} first.`
+          )
+        }
         await this.db.activities
           .where("typeId")
           .equals(typeId)
           .filter((row) => row.workspaceId === this.ctx.workspaceId)
-          .modify({ typeId: null, fields: {}, updatedAt: timestamp })
+          .modify({ typeId: null, updatedAt: parseUtc(now()) })
         await this.db.activityTypeFields
           .where("[workspaceId+typeId]")
           .equals([this.ctx.workspaceId, typeId])
@@ -265,20 +450,9 @@ class ActivityTypesRepository {
       }
     )
   }
-
-  private async revalidateValues(typeId: string) {
-    const fields = await this.fields(typeId)
-    await this.db.activities
-      .where("typeId")
-      .equals(typeId)
-      .filter((row) => row.workspaceId === this.ctx.workspaceId)
-      .modify((row) => {
-        row.fields = keepValidValues(fields, row.fields)
-      })
-  }
 }
 
-export { ActivityTypesRepository }
+export { ActivityTypesRepository, TypeHasSubtypesError, byFieldName }
 export type {
   ActivityTypeChanges,
   ActivityTypesContext,

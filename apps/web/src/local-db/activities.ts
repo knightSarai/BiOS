@@ -8,6 +8,7 @@ import {
 } from "@knight-os/server/core"
 import { activityKey } from "@/activities/areas"
 import { byCreation } from "@/activities/sub-activities"
+import { resolveTypeFields } from "@/activities/type-tree"
 import {
   formatFieldValue,
   keepValidValues,
@@ -21,8 +22,8 @@ import {
   type TimerSound,
 } from "@/activities/timer"
 import { DOCUMENT_FRAGMENT } from "@/editor/document-content"
-import { compareSortKeys } from "@/notebook/sort-keys"
 import type {
+  ActivityFieldRow,
   ActivityOrigin,
   ActivityRow,
   GeneratedKind,
@@ -31,6 +32,7 @@ import type {
   RoutineRunRow,
   TimeEntryRow,
 } from "./db"
+import { ActivityTypesRepository, byFieldName } from "./activity-types"
 import { RoutinesRepository } from "./routines"
 import { TimeEntriesRepository, type LoggedSession } from "./time-entries"
 import {
@@ -128,6 +130,17 @@ const statusChange = (
   }
 }
 
+// "Reps 8 · Weight 60", in the type's field order, then any values it holds for other fields.
+const fieldDetails = (row: ActivityRow, fields: ActivityFieldRow[]) =>
+  fields
+    .flatMap((field) => {
+      const value = row.fields[field.id]
+      return value === undefined
+        ? []
+        : [`${field.name} ${formatFieldValue(field, value)}`]
+    })
+    .join(" · ")
+
 class ActivitiesRepository {
   constructor(
     private readonly db: LocalDb,
@@ -157,10 +170,13 @@ class ActivitiesRepository {
 
   async summary(id: string) {
     const row = await this.byId(id)
-    return row ? this.summarize(row) : null
+    return row ? this.summarize(row, await this.fieldsShownOn()) : null
   }
 
-  private async summarize(row: ActivityRow) {
+  private async summarize(
+    row: ActivityRow,
+    fieldsOf: (row: ActivityRow) => ActivityFieldRow[]
+  ) {
     const area = await this.db.areas.get(row.areaId)
     return {
       id: row.id,
@@ -169,7 +185,28 @@ class ActivitiesRepository {
       status: row.status,
       parentId: row.parentId,
       typeId: row.typeId,
-      details: await this.fieldDetails(row),
+      details: fieldDetails(row, fieldsOf(row)),
+    }
+  }
+
+  // Reads the definitions once, so summarizing many activities doesn't reread them per row.
+  private async fieldsShownOn() {
+    const repository = this.types()
+    const [types, links, library] = await Promise.all([
+      repository.list(),
+      repository.typeFieldLinks(),
+      repository.library(),
+    ])
+    return (row: ActivityRow) => {
+      const typeFields =
+        row.typeId === null
+          ? []
+          : resolveTypeFields(types, links, library, row.typeId)
+      const onType = new Set(typeFields.map((field) => field.id))
+      const held = library.filter(
+        (field) => !onType.has(field.id) && field.id in row.fields
+      )
+      return [...typeFields, ...held]
     }
   }
 
@@ -189,7 +226,10 @@ class ActivitiesRepository {
     const found = rows.filter(
       (row): row is ActivityRow => row?.workspaceId === this.ctx.workspaceId
     )
-    return Promise.all(found.sort(byCreation).map((row) => this.summarize(row)))
+    const fieldsOf = await this.fieldsShownOn()
+    return Promise.all(
+      found.sort(byCreation).map((row) => this.summarize(row, fieldsOf))
+    )
   }
 
   private async ancestorIds(id: string) {
@@ -259,24 +299,6 @@ class ActivitiesRepository {
     })
   }
 
-  // "Reps 8 · Weight 60", in the type's field order, for lines that show an activity inline.
-  private async fieldDetails(row: ActivityRow) {
-    if (row.typeId === null) return ""
-    const fields = await this.db.activityTypeFields
-      .where("[workspaceId+typeId]")
-      .equals([this.ctx.workspaceId, row.typeId])
-      .toArray()
-    return fields
-      .sort((a, b) => compareSortKeys(a.sortKey, b.sortKey))
-      .flatMap((field) => {
-        const value = row.fields[field.id]
-        return value === undefined
-          ? []
-          : [`${field.name} ${formatFieldValue(field, value)}`]
-      })
-      .join(" · ")
-  }
-
   async openCountsByArea() {
     const counts = new Map<string, number>()
     await this.db.activities
@@ -295,6 +317,7 @@ class ActivitiesRepository {
       this.db.areas,
       this.db.activities,
       this.db.activityTypes,
+      this.db.activityFields,
       this.db.activityTypeFields,
       this.db.timeEntries,
       this.db.routineRuns,
@@ -543,10 +566,18 @@ class ActivitiesRepository {
   ) {
     const updates = this.contentUpdatesTable()
     await updates.where("k").equals(snapshot.row.id).delete()
-    const fields = await this.typeFields(snapshot.row.typeId)
+    const fields = await this.types().fieldsByIds(
+      Object.keys(snapshot.row.fields)
+    )
+    const typeId =
+      snapshot.row.typeId !== null &&
+      (await this.types().byId(snapshot.row.typeId))
+        ? snapshot.row.typeId
+        : null
     await this.db.activities.add({
       ...snapshot.row,
       parentId,
+      typeId,
       fields: keepValidValues(fields, snapshot.row.fields),
     })
     await updates.bulkAdd(snapshot.contentUpdates)
@@ -601,11 +632,24 @@ class ActivitiesRepository {
     if (type?.workspaceId !== this.ctx.workspaceId) {
       throw new Error("The type for this activity does not exist.")
     }
-    const rows = await this.db.activityTypeFields
-      .where("[workspaceId+typeId]")
-      .equals([this.ctx.workspaceId, typeId])
-      .toArray()
-    return rows.sort((a, b) => compareSortKeys(a.sortKey, b.sortKey))
+    return this.types().fields(typeId)
+  }
+
+  private async valueFields(typeId: string | null, ids: string[]) {
+    return this.withHeldFields(await this.typeFields(typeId), ids)
+  }
+
+  // The type's fields, then the other fields among `ids` that still exist, by name.
+  private async withHeldFields(typeFields: ActivityFieldRow[], ids: string[]) {
+    const onType = new Set(typeFields.map((field) => field.id))
+    const others = await this.types().fieldsByIds(
+      ids.filter((id) => !onType.has(id))
+    )
+    return [...typeFields, ...others.sort(byFieldName)]
+  }
+
+  private types() {
+    return new ActivityTypesRepository(this.db, this.ctx)
   }
 
   private routines() {
@@ -627,6 +671,7 @@ class ActivitiesRepository {
         this.db.areas,
         this.db.activities,
         this.db.activityTypes,
+        this.db.activityFields,
         this.db.activityTypeFields,
       ],
       async () => {
@@ -644,9 +689,10 @@ class ActivitiesRepository {
             throw new InvalidParentError("That parent activity doesn't exist.")
           }
           const typeId = activity.typeId ?? null
+          const values = activity.fields ?? {}
           const fields = parseFieldValues(
-            await this.typeFields(typeId),
-            activity.fields ?? {}
+            await this.valueFields(typeId, Object.keys(values)),
+            values
           )
           await this.db.areas.update(area.id, {
             nextNumber: area.nextNumber + 1,
@@ -909,14 +955,25 @@ class ActivitiesRepository {
   setFieldValue(id: string, fieldId: string, value: unknown) {
     return this.db.transaction(
       "rw",
-      [this.db.activities, this.db.activityTypes, this.db.activityTypeFields],
+      [
+        this.db.activities,
+        this.db.activityTypes,
+        this.db.activityFields,
+        this.db.activityTypeFields,
+      ],
       async () => {
         const row = await this.byId(id)
         if (!row) return
-        const field = (await this.typeFields(row.typeId)).find(
-          (candidate) => candidate.id === fieldId
+        const fields = await this.valueFields(
+          row.typeId,
+          Object.keys(row.fields)
         )
-        if (!field) throw new Error("This field is not on the activity's type.")
+        const field = fields.find((candidate) => candidate.id === fieldId)
+        if (!field) {
+          throw new Error(
+            "This field isn't on the activity's type and holds no value."
+          )
+        }
         await this.db.activities.update(id, {
           fields: setFieldValue(row.fields, field, value),
           updatedAt: parseUtc(now()),
@@ -925,14 +982,14 @@ class ActivitiesRepository {
     )
   }
 
+  // Values stay with the activity, including those for fields the new type doesn't have.
   changeType(id: string, typeId: string | null) {
     return this.routines().retime(async () => {
       const row = await this.byId(id)
       if (!row || row.typeId === typeId) return
-      const fields = await this.typeFields(typeId)
+      await this.typeFields(typeId)
       await this.db.activities.update(id, {
         typeId,
-        fields: keepValidValues(fields, row.fields),
         updatedAt: parseUtc(now()),
       })
     })

@@ -7,8 +7,10 @@ import {
 } from "@knight-os/server/core"
 import {
   act,
+  closeRunning,
   endedInAttempt,
   endOverrun,
+  entriesInRun,
   findNode,
   hasTimerActivity,
   leavesOf,
@@ -17,6 +19,7 @@ import {
   runRowChanged,
   runningEntry,
   sessionOf,
+  settleTime,
   tickLapped,
   timedInRun,
   touchesRun,
@@ -220,6 +223,23 @@ type Loaded = {
 
 const newId = () => crypto.randomUUID()
 
+// A stretch of timer time a Done just discarded, so the time can be offered back as typed in.
+type Discarded = { activityId: string; seconds: number; endedAt: UtcDatetime }
+
+// Whether an activity sat inside a group that's closed (done, or canceled after).
+const underFinished = (
+  rows: Map<string, ActivityRow>,
+  parentId: string | null
+): boolean => {
+  const parent = parentId === null ? undefined : rows.get(parentId)
+  if (!parent) return false
+  return !isOpenStatus(parent.status) || underFinished(rows, parent.parentId)
+}
+
+// Played this run: the timer ran, or a play left a place to resume from.
+const hasPlayed = (run: Run) =>
+  hasTimerActivity(run) || (run.started && run.cursor !== null)
+
 // The activity as open as far as the engine knows, for an action that closes it itself.
 const reopenedFor = (loaded: Loaded, id: string): Loaded => ({
   ...loaded,
@@ -320,6 +340,7 @@ class RoutinesRepository {
               ...timed,
               manual: false,
               end: entry.endedAt === null ? null : toSeconds(entry.endedAt),
+              recording: entry.recording,
             }
           }
           return {
@@ -452,10 +473,14 @@ class RoutinesRepository {
     ]
   }
 
+  // `reopen` is a done activity played again: it goes back to In progress once the replay has
+  // started, so the replay is finished the same way as any run, by setting its status. Played
+  // first, since reopening first would free what the routine had moved past and skip it.
   apply(
     activityId: string,
     action: Action | { kind: "sync" },
-    within: string | null = null
+    within: string | null = null,
+    reopen: string | null = null
   ) {
     return this.db.transaction("rw", this.tables(), async () => {
       const top = await this.rootOf(activityId)
@@ -478,6 +503,17 @@ class RoutinesRepository {
 
       if (runningEntry(outcome.run)) await this.stopOthers(ready, at)
       await this.commit(top, ready, outcome, at)
+      if (
+        reopen !== null &&
+        runningEntry(outcome.run) &&
+        loaded.rows.get(reopen)?.status === "done"
+      ) {
+        await this.setStatus(reopen, "progress")
+        const reopened = await this.load(top.id)
+        if (reopened) {
+          return sessionOf(reopened.root, reopened.run, seconds, newId, within)
+        }
+      }
       return sessionOf(
         (await this.load(top.id))?.root ?? loaded.root,
         outcome.run,
@@ -551,6 +587,44 @@ class RoutinesRepository {
     for (const root of roots.values()) await this.pause(root, at)
   }
 
+  private async stopInside(
+    top: ActivityRow,
+    loaded: Loaded,
+    groupId: string,
+    at: UtcDatetime
+  ) {
+    const seconds = toSeconds(at)
+    const group = subtreeIds(loaded.rows, groupId)
+    // A part played on its own inside the group keeps its narrower scope; catching up with the
+    // whole group would hand over to activities that never played.
+    const stored = loaded.run.scopeId
+    const scopeId = stored !== null && group.has(stored) ? stored : groupId
+    // Still before the group, the timer first plays up to where it enters it, as it would have.
+    const open = runningEntry(loaded.run)
+    const known = new Set(loaded.run.entries.map((entry) => entry.id))
+    const entered =
+      open && group.has(open.activityId)
+        ? null
+        : this.settled(loaded, seconds).run.entries.find(
+            (entry) =>
+              !entry.manual &&
+              !known.has(entry.id) &&
+              group.has(entry.activityId)
+          )
+    const start: Loaded = entered
+      ? { ...loaded, run: this.settled(loaded, entered.start).run }
+      : loaded
+    const inside = this.settled(
+      { ...start, run: { ...start.run, scopeId } },
+      seconds
+    )
+    const run = {
+      ...closeRunning(inside.run, seconds),
+      scopeId: loaded.run.scopeId,
+    }
+    await this.commit(top, loaded, { run, laps: [] }, at)
+  }
+
   private async pause(root: ActivityRow, at: UtcDatetime) {
     const loaded = await this.load(root.id)
     if (!loaded) return
@@ -620,12 +694,11 @@ class RoutinesRepository {
 
   // Hand-overs that fell due are written before the routine's tree or timers change, so the
   // change never rewrites how far a countdown got.
-  catchUp(activityId: string) {
+  catchUp(activityId: string, at: UtcDatetime = parseUtc(now())) {
     return this.db.transaction("rw", this.tables(), async () => {
       const top = await this.rootOf(activityId)
       const loaded = top ? await this.load(top.id) : null
       if (!top || !loaded) return
-      const at = parseUtc(now())
       await this.commit(top, loaded, this.settled(loaded, toSeconds(at)), at)
     })
   }
@@ -706,64 +779,199 @@ class RoutinesRepository {
   // Hand-overs that fell due are written first, so the change lands on the routine as it is
   // now: a step that already ran out was ticked when it ended, before this changes it.
   // Only a change of status dates it, so marking a done activity done again keeps its date.
+  // Every user's Done lands here (the timer, the status menu, a sub-activity's box), so the
+  // timer's waiting time is settled in one place; the timer's own hand-overs never come here.
   setStatus(
     id: string,
     status: ActivityStatus,
     completedAt: UtcDatetime | null = null
-  ) {
+  ): Promise<Discarded[]> {
     return this.db.transaction("rw", this.tables(), async () => {
-      if (!(await this.row(id))) return
-      await this.catchUp(id)
+      const first = await this.row(id)
+      const root = first ? await this.rootOf(id) : null
+      if (!first || !root) return []
+      // A Done that changes nothing (a stale tab, a second click) leaves the run alone.
+      if (status === "done" && first.status === "done") return []
+      // One instant for the whole change, so nothing rolls forward between catching up and
+      // acting: a countdown running out right now is either closed or still the one playing.
+      const at = parseUtc(now())
+      const seconds = toSeconds(at)
+      const settles = status === "done"
+      // Finishing a group while one of its activities plays catches the timer up only inside
+      // the group, then stops it: hand-overs within it keep their time, and the activity after
+      // the group never starts.
+      const before = await this.load(root.id)
+      if (settles && before) {
+        const group = subtreeIds(before.rows, id)
+        const inGroup = (entry: { activityId: string } | null) =>
+          entry !== null &&
+          entry.activityId !== id &&
+          group.has(entry.activityId)
+        // Playing inside it now, or about to be once a hand-over that fell due is written.
+        if (
+          inGroup(runningEntry(before.run)) ||
+          inGroup(runningEntry(this.settled(before, seconds).run))
+        ) {
+          await this.stopInside(root, before, id, at)
+        }
+      }
+      await this.catchUp(id, at)
       const row = await this.row(id)
       const top = row ? await this.rootOf(id) : null
       const loaded = top ? await this.load(top.id) : null
-      if (!row || !top || !loaded) return
-      const at = parseUtc(now())
-      const seconds = toSeconds(at)
-      const live = runningEntry(this.settled(loaded, seconds).run)
-      // Whatever it was before, ticking the activity the timer is playing hands over. A
-      // cancel is written first and handed over below, so the engine never counts it done
-      // (a lapped step whose laps all end up canceled would be ticked).
-      if (status === "done" && live?.activityId === id) {
-        const ready = reopenedFor(loaded, id)
-        const outcome = act(
-          ready.root,
-          ready.run,
-          { kind: "toggleDone", id },
-          seconds,
-          newId
-        )
-        await this.commit(top, loaded, outcome, at)
-        const ticked = await this.row(id)
-        const redate = completedAt !== null && row.status !== status
-        if (ticked && (ticked.status !== status || redate)) {
-          await this.db.activities.update(
-            id,
-            statusChange(ticked, status, completedAt)
-          )
-        }
-        return
-      }
-      if (row.status !== status) {
-        await this.db.activities.update(
-          id,
-          statusChange(row, status, completedAt)
-        )
-      }
-      if (
-        status === "canceled" &&
-        live &&
-        subtreeIds(loaded.rows, id).has(live.activityId)
-      ) {
-        await this.handOverFrom(top, live.activityId, at)
-      }
-      await this.keepRunUp(top.id, row.status, id, status, at)
-      // A replayed lap only counts as behind once it's out of the replays.
-      if (!isOpenStatus(status)) await this.tickLappedStep(top.id, id)
+      if (!row || !top || !loaded) return []
+      // A step that ticked itself while catching up keeps its time waiting for its own choice.
+      if (status === "done" && row.status === "done") return []
+      const settledRun = this.settled(loaded, seconds).run
+      const subtree = subtreeIds(loaded.rows, id)
+      await this.changeStatus(id, status, completedAt, at)
+      if (!settles) return []
+      return this.settleCompletion(
+        top.id,
+        subtree,
+        hasPlayed(settledRun),
+        before?.run.cursor ?? null,
+        at
+      )
     })
   }
 
+  private async changeStatus(
+    id: string,
+    status: ActivityStatus,
+    completedAt: UtcDatetime | null,
+    at: UtcDatetime
+  ) {
+    const row = await this.row(id)
+    const top = row ? await this.rootOf(id) : null
+    const loaded = top ? await this.load(top.id) : null
+    if (!row || !top || !loaded) return
+    const seconds = toSeconds(at)
+    const live = runningEntry(this.settled(loaded, seconds).run)
+    // Whatever it was before, ticking the activity the timer is playing hands over. A
+    // cancel is written first and handed over below, so the engine never counts it done
+    // (a lapped step whose laps all end up canceled would be ticked).
+    if (status === "done" && live?.activityId === id) {
+      const ready = reopenedFor(loaded, id)
+      const outcome = act(
+        ready.root,
+        ready.run,
+        { kind: "toggleDone", id },
+        seconds,
+        newId
+      )
+      await this.commit(top, loaded, outcome, at)
+      const ticked = await this.row(id)
+      const redate = completedAt !== null && row.status !== status
+      if (ticked && (ticked.status !== status || redate)) {
+        await this.db.activities.update(
+          id,
+          statusChange(ticked, status, completedAt)
+        )
+      }
+      return
+    }
+    if (row.status !== status) {
+      await this.db.activities.update(
+        id,
+        statusChange(row, status, completedAt)
+      )
+    }
+    if (
+      status === "canceled" &&
+      live &&
+      subtreeIds(loaded.rows, id).has(live.activityId)
+    ) {
+      await this.handOverFrom(top, live.activityId, at)
+    }
+    await this.keepRunUp(loaded.rows, top.id, row.status, id, status, at)
+    // A replayed lap only counts as behind once it's out of the replays.
+    if (!isOpenStatus(status)) await this.tickLappedStep(top.id, id)
+  }
+
+  // The waiting time under what was finished is recorded or discarded, never deleted: the
+  // clock still reads what ran. Once played, what's still open inside it is moved past, so
+  // the timer doesn't linger on something finished; a play or a reopen brings it back.
+  private async settleCompletion(
+    rootId: string,
+    subtree: Set<string>,
+    played: boolean,
+    wasAt: string | null,
+    at: UtcDatetime
+  ): Promise<Discarded[]> {
+    const loaded = await this.load(rootId)
+    if (!loaded) return []
+    const before = withCanceledInside(loaded.root, loaded.run)
+    const run = settleTime(before, subtree)
+    // Only this run's time is offered back: what a step held before it joined the routine,
+    // or from before a Start over, was never part of it.
+    const discarded = entriesInRun(before)
+      .filter(
+        (entry) =>
+          !entry.manual &&
+          entry.recording === "pending" &&
+          entry.end !== null &&
+          subtree.has(entry.activityId) &&
+          !before.canceled.includes(entry.activityId) &&
+          entry.end > entry.start
+      )
+      .map((entry) => ({
+        activityId: entry.activityId,
+        seconds: (entry.end ?? entry.start) - entry.start,
+        endedAt: toInstant(entry.end ?? entry.start),
+      }))
+    await this.writeEntries(loaded.stored, run.entries)
+    const stored = await this.runRow(rootId)
+    if (!stored) return discarded
+    const parents = new Set(
+      [...loaded.rows.values()].flatMap((row) => row.parentId ?? [])
+    )
+    const stillOpen = played
+      ? [...subtree].filter((each) => {
+          const row = loaded.rows.get(each)
+          return (
+            row !== undefined &&
+            !parents.has(each) &&
+            isOpenStatus(row.status) &&
+            !stored.passed.includes(each)
+          )
+        })
+      : []
+    const replay = stored.replay.filter((each) => !subtree.has(each))
+    const passed = [...stored.passed, ...stillOpen]
+    // Resume moves on to what's still open after the finished part, within what's being
+    // played, as it would after Next; only with nothing after it does it go back to an earlier
+    // one. The engine's own rule decides what's open (canceled groups, replays, passed).
+    const next: Run = { ...run, passed, replay }
+    const scoped = leavesWithin(loaded.root, stored.scopeId)
+    const lastInside = scoped.findLast((leaf) => subtree.has(leaf.node.id))
+    const resumeAt =
+      nextOpenAfter(scoped, next, lastInside?.node.id ?? null) ??
+      nextOpenAfter(scoped, next, null)
+    // A cursor inside what was finished moves on, as does one this Done dropped from it.
+    const cursor =
+      subtree.has(stored.cursor ?? "") ||
+      (stored.cursor === null && played && subtree.has(wasAt ?? ""))
+        ? (resumeAt?.node.id ?? null)
+        : stored.cursor
+    if (
+      stillOpen.length === 0 &&
+      replay.length === stored.replay.length &&
+      cursor === stored.cursor
+    )
+      return discarded
+    await this.db.routineRuns.put({
+      ...stored,
+      passed,
+      replay,
+      cursor,
+      updatedAt: at,
+    })
+    return discarded
+  }
+
   private async keepRunUp(
+    rows: Map<string, ActivityRow>,
     rootId: string,
     was: ActivityStatus,
     id: string,
@@ -773,8 +981,10 @@ class RoutinesRepository {
     const stored = await this.runRow(rootId)
     if (!stored) return
     const reopened = !isOpenStatus(was) && isOpenStatus(status)
+    // Reopening a group frees everything finishing it moved past.
+    const freed = subtreeIds(rows, id)
     const passed = reopened
-      ? stored.passed.filter((each) => each !== id)
+      ? stored.passed.filter((each) => !freed.has(each))
       : stored.passed
     const replay = isOpenStatus(status)
       ? stored.replay
@@ -833,6 +1043,7 @@ class RoutinesRepository {
       const subtree = subtreeIds(loaded.rows, id)
       const at = parseUtc(now())
       const live = runningEntry(loaded.run)
+      const leavesFinishedGroup = underFinished(loaded.rows, row.parentId)
       if (to?.id !== from.id && live && subtree.has(live.activityId)) {
         await this.pause(from, at)
       }
@@ -841,6 +1052,9 @@ class RoutinesRepository {
         activities.setParent(id, parentId)
       )
       if (to?.id === from.id) {
+        if (leavesFinishedGroup && !underFinished(loaded.rows, parentId)) {
+          await this.freeMoved(from.id, subtree, at)
+        }
         await this.widenPastPlaying(from.id, at)
         return
       }
@@ -852,6 +1066,7 @@ class RoutinesRepository {
       const carried = left ? onlyIds(left, subtree, at) : null
       if (parentId === null) {
         if (carried) await this.db.routineRuns.put({ ...carried, id })
+        if (leavesFinishedGroup) await this.freeMoved(id, subtree, at)
         return
       }
       if (!to) return
@@ -864,7 +1079,25 @@ class RoutinesRepository {
           at
         )
       )
+      const landed = await this.load(to.id)
+      if (
+        leavesFinishedGroup &&
+        landed &&
+        !underFinished(landed.rows, parentId)
+      ) {
+        await this.freeMoved(to.id, subtree, at)
+      }
     })
+  }
+
+  // Finishing the group it left only moved past it, so moved somewhere new it plays there.
+  // What the timer itself moved past stays passed.
+  private async freeMoved(rootId: string, moved: Set<string>, at: UtcDatetime) {
+    const stored = await this.runRow(rootId)
+    if (!stored) return
+    const passed = stored.passed.filter((each) => !moved.has(each))
+    if (passed.length === stored.passed.length) return
+    await this.db.routineRuns.put({ ...stored, passed, updatedAt: at })
   }
 
   // Left in place, a part played on its own that no longer holds what's playing would hand
@@ -893,26 +1126,32 @@ class RoutinesRepository {
       const endedAt =
         entry.end === null ? null : toInstant(Math.max(entry.start, entry.end))
       if (!before) {
-        await this.db.timeEntries.add({
+        const row: TimeEntryRow = {
           id: entry.id,
           workspaceId: this.ctx.workspaceId,
           activityId: entry.activityId,
           startedAt,
           endedAt,
           source: "timer",
-        })
+          recording: entry.recording,
+        }
+        await this.db.timeEntries.add(row)
         continue
       }
+      const recording =
+        before.source === "timer" && before.recording !== entry.recording
       const changed =
+        recording ||
         before.activityId !== entry.activityId ||
         (before.endedAt === null) !== (endedAt === null) ||
         (before.endedAt !== null &&
           endedAt !== null &&
           Math.abs(secondsBetween(before.endedAt, endedAt)) >= 0.001)
       if (changed) {
-        await this.db.timeEntries.update(entry.id, {
-          activityId: entry.activityId,
-          endedAt,
+        await this.db.timeEntries.update(entry.id, (row) => {
+          row.activityId = entry.activityId
+          row.endedAt = endedAt
+          if (row.source === "timer") row.recording = entry.recording
         })
       }
     }
@@ -972,4 +1211,4 @@ class RoutinesRepository {
 }
 
 export { MissingRoutineError, RoutinesRepository, toSeconds }
-export type { RoutinesContext }
+export type { Discarded, RoutinesContext }

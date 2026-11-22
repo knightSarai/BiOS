@@ -1,13 +1,18 @@
 import { useId, useRef } from "react"
 import { Dialog } from "@base-ui/react/dialog"
 import { useQuery } from "@tanstack/react-query"
-import { useAtom, useAtomValue, useSetAtom } from "jotai"
+import { Link, useParams } from "@tanstack/react-router"
+import { useAtom, useSetAtom } from "jotai"
 import {
+  ArrowLeft,
   Check,
+  ChevronDown,
+  Ellipsis,
+  ListRestart,
   Flag,
   Maximize2,
-  Minimize2,
   Pause,
+  Plus,
   Play,
   RotateCcw,
   RotateCw,
@@ -15,25 +20,34 @@ import {
   SkipForward,
   Volume2,
   VolumeX,
+  X,
 } from "lucide-react"
 import { toast } from "sonner"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Popover, PopoverContent } from "@/components/ui/popover"
 import {
   useSetActivitySound,
+  useSetActivityStatus,
   useSetActivityTimer,
 } from "@/local-db/activity-mutations"
 import { activityQuery } from "@/local-db/activity-queries"
 import { cn } from "@/lib/utils"
+import { statusName, type StatusNames } from "../activity-types"
 import { EMPTY, secondsToValue } from "../duration"
+import { countedOf } from "../log-time"
 import {
   faceOf,
   findNode,
@@ -42,11 +56,13 @@ import {
   leafWeight,
   nodesOf,
   plannedSeconds,
+  heldSeconds,
   type RoutineNode,
 } from "../routine"
 import {
   actualVersusPlanned,
   clock,
+  replayOf,
   controlsOf,
   isLive,
   isPaused,
@@ -54,10 +70,11 @@ import {
   offersStartOver,
   partOf,
   progressText,
-  roughly,
   stepSuffix,
   summaryOf,
   timeLeft,
+  timerEnded,
+  timerTargetId,
   type Primary,
 } from "../routine-view"
 import { timerFrom } from "../series"
@@ -67,44 +84,46 @@ import {
   timerSoundLabels,
   type TimerSound,
 } from "../timer"
+import type { ActivityStatus } from "../status"
 import { previewSound } from "../timer-runner"
 import {
   confirmStartOverAtom,
   useFullScreen,
-  usePress,
   type Routine,
   type Surface,
 } from "../use-routine"
 import { swatchStyle } from "./ColorDot"
 import { DurationChip, DurationDigits } from "./DurationField"
-import { LogTimeButton, LogTimeForm, useLogTimeOpen } from "./LogTime"
+import type { AddTimeOffer } from "./LogTime"
+import { StatusIcon } from "./StatusIcon"
+import { StatusMenu } from "./StatusMenu"
 import { TypeMark, type TimerType } from "./TypeMark"
 
-// The running activity tints the timer with its type's colour, so a rest reads differently
-// from a round at a glance without the app ever guessing from the title.
-const tintClass = "bg-[color-mix(in_oklch,var(--swatch)_16%,var(--color-card))]"
+const ACTIVITY_PATH = "/$workspace/activities/$activityId"
 
+// The running activity tints full screen with its type's colour, so a rest reads differently
+// from a round at a glance without the app ever guessing from the title.
 const typeStyle = (type: TimerType | null) =>
   type ? swatchStyle(type.color) : undefined
 
 const tintedType = (timer: Routine) =>
   isLive(timer.session) ? timer.typeOf(timer.session.current?.node) : null
 
-// Paused drops the colour: a grey surface says "stopped" before any label is read.
-const surfaceOf = (timer: Routine) => {
-  const type = timer.session.phase === "running" ? tintedType(timer) : null
-  return {
-    style: typeStyle(type),
-    className: type ? tintClass : isPaused(timer.session) ? "bg-muted" : null,
-  }
-}
+const runningType = (timer: Routine) =>
+  timer.session.phase === "running" ? tintedType(timer) : null
 
 const primaryIcons: Record<Primary["icon"], typeof Play> = {
   pause: Pause,
   play: Play,
   again: RotateCw,
-  startOver: RotateCcw,
 }
+
+// Play and Pause read as solid glyphs; Do again's open arc would fill into a blob.
+const filledIcon = (icon: Primary["icon"]) =>
+  icon === "again" ? undefined : "fill-current"
+
+// Previous, and its arrow key, only where the timer has more than one activity to step between.
+const stepsBack = (timer: Routine) => timer.session.scoped.length > 1
 
 // One tab stop for the whole bar; the arrow keys move between its activities.
 const moveAlongBar = (event: React.KeyboardEvent<HTMLElement>) => {
@@ -183,17 +202,20 @@ function SectionBar({
                 isCurrent ? timer.typeOf(session.current?.node) : null
               )}
               className={cn(
-                "absolute inset-x-0 top-1/2 flex -translate-y-1/2 overflow-hidden rounded-full bg-foreground/20",
+                "absolute inset-x-0 top-1/2 flex -translate-y-1/2 overflow-hidden rounded-full bg-foreground/15",
                 heights.track,
                 isCurrent &&
-                  timer.typeOf(session.current?.node) &&
-                  "bg-[color-mix(in_oklch,var(--swatch)_75%,var(--color-background))]"
+                  (timer.typeOf(session.current?.node)
+                    ? "bg-[color-mix(in_oklch,var(--swatch)_35%,var(--color-background))]"
+                    : "bg-accent-text/25")
               )}
             >
               {leaves.map((leaf) => {
-                // Only what's running wears its type's colour; finished work is plain grey.
+                // Only what's running wears a colour (its type's, else the accent); finished work
+                // is plain grey.
                 const running =
                   live && session.current?.node.id === leaf.node.id
+                const runningType = running ? timer.typeOf(leaf.node) : null
                 return (
                   <span
                     key={leaf.node.id}
@@ -202,8 +224,9 @@ function SectionBar({
                   >
                     <span
                       className={cn(
-                        "absolute inset-y-0 left-0 bg-foreground/70 transition-[width] duration-200",
-                        running && "bg-transparent"
+                        "absolute inset-y-0 left-0 bg-foreground/35 transition-[width] duration-200",
+                        running &&
+                          (runningType ? "bg-(--swatch)" : "bg-accent-text")
                       )}
                       style={{
                         ...typeStyle(timer.typeOf(leaf.node)),
@@ -242,96 +265,83 @@ function SectionBar({
   )
 }
 
-function Controls({
-  timer,
-  size,
-  surface,
-}: {
-  timer: Routine
-  size: "sm" | "xl"
-  surface: Surface
-}) {
+function Controls({ timer }: { timer: Routine }) {
   const { session, act } = timer
-  const press = usePress(timer, surface)
-  const big = size === "xl"
   const { primary, prev, lap, next } = controlsOf(session)
   const PrimaryIcon = primaryIcons[primary.icon]
+  // On a type-tinted surface the outline needs its own ground to stay legible.
   const peer = cn(
-    "shrink-0 rounded-full bg-background",
-    big
-      ? "h-14 px-6 text-base max-sm:h-12 max-sm:px-4 [&_svg]:size-5"
-      : "h-11 px-3.5 text-sm [&_svg]:size-4"
+    "h-11 shrink-0 rounded-full px-5 text-sm has-data-[icon=inline-start]:pl-4 max-sm:px-4 max-sm:has-data-[icon=inline-start]:pl-3.5 [&_svg]:size-4",
+    runningType(timer) && "bg-background/80"
   )
+  const quiet = finishLeads(timer)
+  // Three columns keep the main button on the clock's centre line whatever sits beside it.
   return (
-    <div
-      className={cn(
-        "flex w-full items-center justify-center",
-        big ? "gap-3 max-sm:gap-2" : "gap-1.5"
-      )}
-    >
-      {prev ? (
-        <Button
-          type="button"
-          variant="outline"
-          className={cn(
-            "shrink-0 rounded-full bg-background p-0 text-foreground disabled:border-transparent disabled:bg-transparent",
-            big
-              ? "size-14 max-sm:size-12 [&_svg]:size-5"
-              : "size-11 [&_svg]:size-4"
-          )}
-          aria-label="Previous"
-          title="Previous activity (its logged time stays)"
-          disabled={prev.disabled}
-          onClick={() => act(prev.action)}
-        >
-          <SkipBack />
-        </Button>
-      ) : null}
+    <div className="grid w-full grid-cols-[1fr_auto_1fr] items-center gap-3 max-sm:flex max-sm:flex-wrap max-sm:justify-center max-sm:gap-2">
+      <div className="flex justify-end">
+        {prev && stepsBack(timer) ? (
+          <Button
+            type="button"
+            variant="outline"
+            className={cn(
+              "size-11 shrink-0 rounded-full p-0 [&_svg]:size-4",
+              runningType(timer) && "bg-background/80"
+            )}
+            aria-label="Previous"
+            title="Previous activity (its logged time stays)"
+            disabled={prev.disabled}
+            onClick={() => act(prev.action)}
+          >
+            <SkipBack />
+          </Button>
+        ) : null}
+      </div>
       <Button
         type="button"
+        variant={quiet ? "outline" : "default"}
         className={cn(
-          "rounded-full font-semibold",
-          big
-            ? "h-16 min-w-44 px-9 text-lg max-sm:h-14 max-sm:min-w-0 max-sm:flex-1 max-sm:px-6 [&_svg]:size-7"
-            : "h-11 min-w-0 flex-1 text-sm font-semibold [&_svg]:size-4",
+          quiet
+            ? peer
+            : "h-14 min-w-40 rounded-full px-8 text-base font-semibold has-data-[icon=inline-start]:pl-8 max-sm:min-w-32 max-sm:px-6 max-sm:has-data-[icon=inline-start]:pl-6 [&_svg]:size-5",
           // On a tinted surface the brand colour fights the type colour; neutral reads cleaner.
-          tintedType(timer) &&
+          runningType(timer) &&
             "bg-foreground text-background hover:bg-foreground/85"
         )}
         disabled={primary.disabled}
-        onClick={() => press(primary.action)}
+        onClick={() => act(primary.action)}
       >
-        <PrimaryIcon data-icon="inline-start" />
+        <PrimaryIcon
+          data-icon="inline-start"
+          className={filledIcon(primary.icon)}
+        />
         {primary.label}
       </Button>
-      {lap ? (
-        <Button
-          type="button"
-          variant="outline"
-          className={peer}
-          title={lap.hint}
-          onClick={() => act(lap.action)}
-        >
-          <Flag data-icon="inline-start" />
-          {lap.label}
-        </Button>
-      ) : null}
-      {next ? (
-        <Button
-          type="button"
-          variant="outline"
-          className={peer}
-          title={next.hint}
-          onClick={() => act(next.action)}
-        >
-          {next.skip ? (
+      <div className="flex justify-start gap-3 max-sm:gap-2">
+        {lap ? (
+          <Button
+            type="button"
+            variant="outline"
+            className={peer}
+            title={lap.hint}
+            onClick={() => act(lap.action)}
+          >
+            <Flag data-icon="inline-start" />
+            {lap.label}
+          </Button>
+        ) : null}
+        {next ? (
+          <Button
+            type="button"
+            variant="outline"
+            className={peer}
+            title={next.hint}
+            onClick={() => act(next.action)}
+          >
             <SkipForward data-icon="inline-start" />
-          ) : (
-            <Check data-icon="inline-start" />
-          )}
-          {next.label}
-        </Button>
-      ) : null}
+            {next.label}
+          </Button>
+        ) : null}
+      </div>
     </div>
   )
 }
@@ -365,6 +375,33 @@ function Clock({ timer, className }: { timer: Routine; className?: string }) {
   )
 }
 
+function PausedLabel({
+  ended,
+  className,
+}: {
+  ended: boolean
+  className?: string
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-warning-text",
+        className
+      )}
+    >
+      <span aria-hidden className="size-1.5 rounded-full bg-current" />
+      {ended ? "Timer ended" : "Paused"}
+    </span>
+  )
+}
+
+// Once the timer has nothing left to say (its countdown ended, or it finished), its own
+// controls step back: what's left is setting the activity's status, on its page.
+const finishLeads = (timer: Routine) =>
+  timerEnded(timer.session) ||
+  timer.session.phase === "finished" ||
+  timer.session.phase === "scopeDone"
+
 function StartOverConfirm({
   timer,
   surface,
@@ -377,7 +414,8 @@ function StartOverConfirm({
   const [asking, setAsking] = useAtom(confirmStartOverAtom)
   const titleId = useId()
   const descriptionId = useId()
-  if (asking !== surface) return null
+  if (asking?.surface !== surface || asking.routineId !== timer.routine.id)
+    return null
   return (
     <div
       role="alertdialog"
@@ -419,32 +457,61 @@ function StartOverConfirm({
   )
 }
 
-// Kept quiet under the progress, away from Pause and Done, so it is findable but never hit by mistake.
-function StartOver({
+// What's rarely wanted and undoes work lives behind ⋯, never beside Pause.
+function MoreMenu({
   timer,
-  size,
   surface,
+  again,
+  className,
 }: {
   timer: Routine
-  size: "sm" | "lg"
   surface: Surface
+  again?: Primary["action"] | null
+  className?: string
 }) {
   const setAsking = useSetAtom(confirmStartOverAtom)
-  if (!offersStartOver(timer.session)) return null
+  const startOver = offersStartOver(timer.session)
+  if (!again && !startOver) return null
   return (
-    <Button
-      type="button"
-      variant="ghost"
-      size={size === "lg" ? "default" : "sm"}
-      className={cn(
-        "self-center text-foreground/70 max-md:h-11",
-        size === "lg" && "text-base"
-      )}
-      onClick={() => setAsking(surface)}
-    >
-      <RotateCcw />
-      Start over
-    </Button>
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-lg"
+            className={cn(
+              "shrink-0 text-muted-foreground max-md:size-11",
+              className
+            )}
+            aria-label="More timer actions"
+            title="More"
+          />
+        }
+      >
+        <Ellipsis />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        {again ? (
+          <DropdownMenuItem
+            className="max-md:min-h-11"
+            onClick={() => timer.act(again)}
+          >
+            <RotateCw />
+            Do again
+          </DropdownMenuItem>
+        ) : null}
+        {startOver ? (
+          <DropdownMenuItem
+            className="max-md:min-h-11"
+            onClick={() => setAsking({ surface, routineId: timer.routine.id })}
+          >
+            <RotateCcw />
+            Restart timer…
+          </DropdownMenuItem>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
@@ -507,7 +574,9 @@ function RoutineProgress({
       >
         <span className="truncate">
           {part
-            ? `${part.title} · ${part.index} of ${part.count}`
+            ? part.title === session.current?.node.title
+              ? `${part.index} of ${part.count}`
+              : `${part.title} · ${part.index} of ${part.count}`
             : session.root.title}
         </span>
         <span
@@ -568,11 +637,16 @@ function CurrentHeading({
           big ? "text-4xl lg:text-5xl" : "text-base font-semibold"
         )}
       >
-        <TypeMark
-          type={timer.typeOf(current.node)}
-          className={big ? "[&_svg]:size-8" : undefined}
-        />
-        <span dir="auto" className={small ? "line-clamp-2" : "truncate"}>
+        {timer.typeOf(current.node) ? (
+          <TypeMark
+            type={timer.typeOf(current.node)}
+            className={big ? "[&_svg]:size-8" : undefined}
+          />
+        ) : null}
+        <span
+          dir="auto"
+          className={small ? "line-clamp-2" : "truncate pb-1 leading-tight"}
+        >
           {current.node.title}
           {of ? <span className="tabular-nums">{of}</span> : null}
         </span>
@@ -584,7 +658,6 @@ function CurrentHeading({
 const RING = 46
 const RING_LENGTH = 2 * Math.PI * RING
 
-// A stopwatch has nothing to drain, so it shows the track alone.
 function TimerRing({
   timer,
   className,
@@ -620,7 +693,8 @@ function TimerRing({
           strokeWidth="4"
           className="stroke-foreground/15"
         />
-        {face.fraction === null ? null : (
+        {face.fraction === null ||
+        (1 - face.fraction) * RING_LENGTH < 0.5 ? null : (
           <circle
             cx="50"
             cy="50"
@@ -648,88 +722,23 @@ function TimerRing({
   )
 }
 
-function ClockLine({ timer, size }: { timer: Routine; size: "sm" | "xl" }) {
-  const node = timer.session.current?.node
-  if (!node) return null
-  const big = size === "xl"
-  const paused = isPaused(timer.session)
-  // The digits scale with the ring (cqw), and an hour-long 1:29:59 needs a smaller face to fit.
-  const long = (clockText(timer)?.length ?? 0) > 5
+function UpNext({ timer }: { timer: Routine }) {
+  const next = timer.session.next
+  if (!next) return null
   return (
-    <div className="relative flex flex-col items-center gap-1.5">
-      <Clock
-        timer={timer}
-        className={cn("leading-none", long ? "text-[19cqw]" : "text-[27cqw]")}
-      />
-      <span
-        className={cn(
-          "text-foreground/85",
-          big ? "text-lg font-medium" : "text-sm"
-        )}
-      >
-        {node.timer.mode === "down"
-          ? `of ${clock(node.timer.seconds)}`
-          : "stopwatch, counting up"}
-      </span>
-      {/* Floats clear of the digits so pausing never moves them, and the target stays in view. */}
-      {paused ? (
-        <span
-          className={cn(
-            "absolute rounded-full bg-foreground font-semibold tracking-widest text-background uppercase",
-            big
-              ? "top-full mt-3 px-4 py-1.5 text-base"
-              : "bottom-full mb-1.5 px-2.5 py-0.5 text-xs"
-          )}
-        >
-          Paused
-        </span>
+    <span className="flex max-w-full min-w-0 items-center gap-1.5 text-base text-muted-foreground">
+      <span className="shrink-0">Up next</span>
+      {timer.typeOf(next.node) ? (
+        <TypeMark type={timer.typeOf(next.node)} />
       ) : null}
-    </div>
-  )
-}
-
-function UpNext({
-  timer,
-  size,
-  className,
-}: {
-  timer: Routine
-  size: "sm" | "lg"
-  className?: string
-}) {
-  const { session } = timer
-  const next = session.next
-  const small = size === "sm"
-  return (
-    <span
-      className={cn(
-        "flex min-w-0 items-center gap-2 bg-foreground/5 text-foreground/80",
-        small
-          ? "rounded-lg px-3 py-2 text-sm"
-          : "rounded-full px-6 py-3 text-2xl max-sm:px-5 max-sm:text-xl",
-        className
-      )}
-    >
-      {next ? (
-        <>
-          <span
-            className={cn("shrink-0 text-foreground/70", !small && "text-lg")}
-          >
-            Up next
-          </span>
-          <TypeMark type={timer.typeOf(next.node)} />
-          <span dir="auto" className="truncate font-semibold text-foreground">
-            {next.node.title}
-          </span>
-          <span className="shrink-0 font-medium text-foreground tabular-nums">
-            {next.node.timer.mode === "down"
-              ? clock(next.node.timer.seconds)
-              : "counts up"}
-          </span>
-        </>
-      ) : (
-        <span>Last one{session.scope ? ` in ${session.scope.title}` : ""}</span>
-      )}
+      <span dir="auto" className="truncate font-medium text-foreground">
+        {next.node.title}
+      </span>
+      <span className="shrink-0 tabular-nums">
+        {next.node.timer.mode === "down"
+          ? clock(next.node.timer.seconds)
+          : "counts up"}
+      </span>
     </span>
   )
 }
@@ -759,7 +768,7 @@ function SoundMenu({ timer }: { timer: Routine }) {
           <Button
             type="button"
             variant="ghost"
-            size="icon-sm"
+            size="icon-lg"
             className="shrink-0 text-muted-foreground max-md:size-11"
             aria-label={`Sound: ${timerSoundLabels[sound]}`}
             title={`Sound: ${timerSoundLabels[sound]}`}
@@ -806,10 +815,12 @@ function TimerField({
   workspaceId,
   node,
   variant,
+  className,
 }: {
   workspaceId: string
   node: RoutineNode
-  variant: "chip" | "row"
+  variant: "chip" | "compact" | "row"
+  className?: string
 }) {
   const setTimer = useSetActivityTimer(workspaceId)
   const value =
@@ -819,14 +830,14 @@ function TimerField({
       { id: node.id, timer: timerFrom(next, node.timer.sound) },
       { onError: () => toast.error("Couldn't save the timer.") }
     )
-  if (variant === "chip") {
+  if (variant !== "row") {
     return (
       <DurationChip
         value={value}
         label={`${node.title} timer`}
-        zeroLabel="stopwatch"
-        downLabel="countdown"
-        className="mt-1 self-start"
+        zeroLabel={variant === "chip" ? "stopwatch" : ""}
+        icon={variant === "chip"}
+        className={className}
         onCommit={set}
       />
     )
@@ -852,373 +863,640 @@ const logTargetOf = (timer: Routine) =>
   findNode(timer.routine, timer.session.within ?? timer.routine.id) ??
   timer.routine
 
-// Time is logged for work still to do; a done activity or a finished routine has its time.
-const offersLogTime = (timer: Routine) => {
-  const { phase, run } = timer.session
-  const page = logTargetOf(timer)
-  return (
-    phase !== "running" &&
-    phase !== "finished" &&
-    !run.done.includes(page.id) &&
-    !run.canceled.includes(page.id)
-  )
+const targetOf = (timer: Routine) => {
+  const id = timerTargetId(timer.session)
+  return {
+    id,
+    title:
+      findNode(timer.routine, id)?.title || timer.routine.title || "Untitled",
+  }
 }
 
-function SideActions({
+function DoneLine({
   timer,
-  surface,
-  size,
-  timezone,
+  className,
 }: {
   timer: Routine
-  surface: Surface
-  size: "sm" | "lg"
-  timezone: string
+  className?: string
 }) {
-  const page = logTargetOf(timer)
-  const logTime = useLogTimeOpen(page.id, surface)
-  const asking = useAtomValue(confirmStartOverAtom) === surface
-  if (logTime.open) {
-    return <LogTimeForm timer={timer} node={page} timezone={timezone} />
-  }
-  if (asking) {
-    return (
-      <StartOverConfirm timer={timer} surface={surface} className="w-full" />
-    )
-  }
-  return (
-    <div className="flex flex-wrap items-center justify-center gap-2">
-      {offersLogTime(timer) ? <LogTimeButton onClick={logTime.show} /> : null}
-      <StartOver timer={timer} size={size} surface={surface} />
-    </div>
-  )
-}
-
-function Summary({ timer, size }: { timer: Routine; size: "sm" | "xl" }) {
   const summary = summaryOf(timer.session)
-  const done =
-    summary.complete || timer.session.run.done.includes(summary.node.id)
-  const big = size === "xl"
+  const done = timer.session.run.done.includes(timerTargetId(timer.session))
+  const seconds = done ? summary.recorded : summary.seconds
   return (
-    <span
-      className={cn(
-        "flex min-w-0 flex-col",
-        big ? "items-center gap-1 text-center" : "items-start gap-0.5"
-      )}
-    >
+    <span className={cn("flex shrink-0 items-center gap-2 text-sm", className)}>
       {done ? (
-        <span className={cn("text-foreground/70", big ? "text-xl" : "text-sm")}>
-          Done
+        <Check className="size-4 text-primary" strokeWidth={2.5} />
+      ) : null}
+      <span className="font-medium">{done ? "Done" : "Timer finished"}</span>
+      {seconds > 0 ? (
+        <span className="text-muted-foreground tabular-nums">
+          · {clock(seconds)}
         </span>
       ) : null}
-      <span
-        dir="auto"
-        className={cn(
-          "line-clamp-2 font-semibold",
-          big ? "text-4xl lg:text-5xl" : "text-base"
-        )}
-      >
-        {summary.node.title}
-      </span>
-      <span
-        className={cn(
-          "font-medium tracking-tight tabular-nums",
-          big ? "mt-4 text-7xl" : "mt-1 text-3xl"
-        )}
-      >
-        {clock(summary.seconds)}
-      </span>
     </span>
   )
 }
 
-// In the sticky sidebar on desktop and under the title on a phone. Full screen is the view
-// to work from; this keeps the run in reach while you read.
-function TimerPanel({ timer, timezone }: { timer: Routine; timezone: string }) {
-  const { session, act } = timer
-  const fullScreen = useFullScreen()
-  const { phase, current } = session
-  const page = logTargetOf(timer)
-  const logTime = useLogTimeOpen(page.id, "panel")
+type PageStatus = { value: ActivityStatus; names: StatusNames | null }
 
-  const pageDone = session.run.done.includes(page.id)
-  if (phase === "idle" && !pageDone) {
-    const only =
-      session.scope && session.scope.id !== session.root.id
-        ? session.scope
-        : null
-    const leaves = only ? session.scoped : session.leaves
-    const planned = plannedSeconds(leaves)
-    const ownTimer = leaves.length === 1 && current?.node.id === session.root.id
-    const startable = !controlsOf(session).primary.disabled
-    return (
-      <section
-        aria-label="Timer"
-        className="-mx-3 flex flex-col gap-3 rounded-xl bg-muted/40 p-3 max-lg:mx-0 max-lg:border"
-      >
-        <div className="flex items-start justify-between gap-2">
-          {ownTimer ? (
-            <TimerField
-              workspaceId={timer.workspaceId}
-              node={current.node}
-              variant="chip"
-            />
-          ) : (
-            <div className="flex min-w-0 flex-col gap-0.5">
-              <span className="text-sm text-foreground/70">
-                {only ? `Only ${only.title} · starts with` : "Starts with"}
-              </span>
-              <span className="flex min-w-0 items-center gap-1.5 text-base font-semibold">
-                {current && timer.typeOf(current.node) ? (
-                  <TypeMark type={timer.typeOf(current.node)} />
-                ) : null}
-                <span dir="auto" className="truncate">
-                  {current?.node.title}
-                </span>
-              </span>
-              {planned > 0 ? (
-                <span className="text-sm text-foreground/70">
-                  About {roughly(planned)}
-                </span>
-              ) : null}
-            </div>
-          )}
-          <SoundMenu timer={timer} />
-        </div>
-        {logTime.open ? (
-          <LogTimeForm timer={timer} node={page} timezone={timezone} />
-        ) : (
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              className="h-11 min-w-0 flex-1 rounded-full bg-foreground text-sm font-semibold text-background hover:bg-foreground/85 [&_svg]:size-4"
-              aria-label={`Start ${only?.title ?? session.root.title}`}
-              title={startable ? undefined : "Every activity in it is canceled"}
-              disabled={!startable}
-              onClick={() => act({ kind: only ? "play" : "playAll" })}
-            >
-              <Play data-icon="inline-start" />
-              Start
-            </Button>
-            <LogTimeButton onClick={logTime.show} />
-          </div>
-        )}
-        <ScopeLine timer={timer} />
-      </section>
-    )
-  }
-
-  const surface = surfaceOf(timer)
+// The activity's Status, one of its properties. Done drops what the timer was holding and
+// offers it as time to add, from what that Done actually dropped.
+function StatusValue({
+  workspaceId,
+  activityId,
+  status,
+  offer,
+  buttonRef,
+  className,
+}: {
+  workspaceId: string
+  activityId: string
+  status: PageStatus
+  offer: AddTimeOffer
+  buttonRef: React.RefObject<HTMLButtonElement | null>
+  className: string
+}) {
+  const setStatus = useSetActivityStatus(workspaceId)
+  const label = statusName(status.value, status.names)
   return (
-    <section
-      aria-label="Timer"
-      style={surface.style}
-      className={cn(
-        "-mx-3 flex flex-col gap-3 rounded-xl bg-muted/40 p-3 transition-colors duration-500 max-lg:mx-0 max-lg:border",
-        surface.className
-      )}
-    >
-      {phase === "finished" || phase === "idle" || !current ? (
-        <div className="flex flex-col gap-3">
-          <div className="flex items-start justify-between gap-2">
-            <Summary timer={timer} size="sm" />
-            <SoundMenu timer={timer} />
-          </div>
-          {phase === "idle" ? (
-            <Button
-              type="button"
-              className="h-11 rounded-full bg-foreground text-sm font-semibold text-background hover:bg-foreground/85 [&_svg]:size-4"
-              onClick={() => act({ kind: "playAll" })}
-            >
-              <RotateCw data-icon="inline-start" />
-              Do again
-            </Button>
-          ) : (
-            <Controls timer={timer} size="sm" surface="panel" />
-          )}
-        </div>
-      ) : (
-        <>
-          <div className="flex items-start justify-between gap-2">
-            <CurrentHeading timer={timer} size="sm" />
-            <span className="flex shrink-0 items-center gap-1">
-              <SoundMenu timer={timer} />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-8 shrink-0 bg-background px-2.5 text-xs font-medium max-md:h-11 [&_svg]:size-3.5"
-                title="Full screen"
-                onClick={() => fullScreen.enter(timer.routine.id)}
-              >
-                <Maximize2 data-icon="inline-start" />
-                Full screen
-              </Button>
-            </span>
-          </div>
-          <ScopeLine timer={timer} />
-          <TimerRing timer={timer} className="mx-auto w-52">
-            <ClockLine timer={timer} size="sm" />
-          </TimerRing>
-          <Controls timer={timer} size="sm" surface="panel" />
-          <UpNext timer={timer} size="sm" />
-        </>
-      )}
-      {phase === "finished" || phase === "idle" ? null : (
-        <RoutineProgress timer={timer} size="sm" />
-      )}
-      <SideActions
-        timer={timer}
-        surface="panel"
-        size="sm"
-        timezone={timezone}
-      />
-    </section>
+    <StatusMenu
+      status={status.value}
+      names={status.names}
+      onChange={(next) => {
+        setStatus.mutate(
+          { id: activityId, status: next },
+          {
+            onSuccess: (dropped) => {
+              // Leaving Done ends what that Done counted.
+              if (next !== "done") offer.forget()
+              // A Done that dropped nothing (the step had just ticked itself) offers the
+              // time still waiting on it.
+              if (next === "done") {
+                offer.show(
+                  "status",
+                  dropped.length > 0 ? countedOf(dropped) : null
+                )
+              }
+            },
+            onError: () => toast.error("Couldn't change the status."),
+          }
+        )
+      }}
+      trigger={
+        <button
+          ref={buttonRef}
+          type="button"
+          aria-label={`Status: ${label}`}
+          className={className}
+        >
+          <StatusIcon status={status.value} />
+          <span className="flex-1 truncate">{label}</span>
+          <ChevronDown className="size-3.5 text-muted-foreground" />
+        </button>
+      }
+    />
   )
 }
 
-function Dock({ timer, timezone }: { timer: Routine; timezone: string }) {
+// The timer as a property: what it's doing in words, its one main action as a labelled
+// button, and everything else in a menu of labelled items.
+function TimerValue({
+  timer,
+  status,
+  offer,
+  addRef,
+  surface,
+  className,
+}: {
+  timer: Routine
+  status: PageStatus
+  offer: AddTimeOffer
+  addRef: React.RefObject<HTMLButtonElement | null>
+  surface: Surface
+  className?: string
+}) {
   const { session, act } = timer
   const fullScreen = useFullScreen()
-  const press = usePress(timer, "dock")
+  const { phase, current } = session
+  const { primary } = controlsOf(session)
+  const live = (phase === "running" || phase === "paused") && current !== null
+  const ended = live && timerEnded(session)
+  const done = !live && status.value === "done"
+  const finished = !live && (phase === "finished" || phase === "scopeDone")
+  const narrowed =
+    session.scope !== null &&
+    session.scope.id !== session.root.id &&
+    phase !== "finished"
   const page = logTargetOf(timer)
-  const logTime = useLogTimeOpen(page.id, "dock")
-  const { current, phase } = session
-  if (phase === "idle") return null
-  const { primary, lap, next } = controlsOf(session)
+  const took = heldSeconds(session.run, page, session.now)
   const PrimaryIcon = primaryIcons[primary.icon]
-  const summary = phase === "finished" || !current
-  const total = summaryOf(session)
-  const surface = surfaceOf(timer)
+  // One line that wraps when the column is narrow: the main action keeps its clock, and
+  // the full-screen and menu buttons move down together, staying on the right.
   return (
-    <div className="flex justify-center px-4 pt-1 pb-3 max-sm:px-2 max-sm:pb-2">
-      <div
-        style={surface.style}
-        className={cn(
-          "flex w-full max-w-2xl flex-col gap-2 rounded-2xl border bg-popover p-3 shadow-xl max-sm:p-2",
-          surface.className
-        )}
-      >
-        <StartOverConfirm timer={timer} surface="dock" />
-        {logTime.open ? (
-          <LogTimeForm timer={timer} node={page} timezone={timezone} />
-        ) : null}
-        <div className="flex items-center gap-2 max-sm:gap-1.5">
-          <button
-            type="button"
-            onClick={() => fullScreen.enter(timer.routine.id)}
-            aria-label={`Full screen: ${summary ? total.node.title : current.node.title}`}
-            title="Full screen"
-            className="flex min-h-11 min-w-0 flex-1 items-center gap-4 rounded-xl px-2 py-1 text-left hover:bg-foreground/5 max-sm:gap-2.5 max-sm:px-1"
-          >
-            {summary ? (
-              <>
-                <span className="text-4xl leading-none font-medium tracking-tight text-muted-foreground tabular-nums max-sm:text-3xl">
-                  {clock(total.seconds)}
-                </span>
-                <span className="flex min-w-0 flex-col gap-0.5">
-                  <span className="truncate text-lg font-medium max-sm:text-base">
-                    {total.node.title}
-                  </span>
-                  <span className="truncate text-sm text-foreground/85">
-                    {total.complete ? "Complete" : "Nothing left to play"}
-                  </span>
-                </span>
-              </>
-            ) : (
-              <>
-                <Clock
-                  timer={timer}
-                  className="text-4xl leading-none max-sm:text-3xl"
-                />
-                <span className="flex min-w-0 flex-col gap-0.5">
-                  <span className="flex min-w-0 items-center gap-1.5 text-lg max-sm:text-base">
-                    <TypeMark type={timer.typeOf(current.node)} />
-                    <span className="truncate font-medium">
-                      {current.node.title}
-                    </span>
-                  </span>
-                  <span className="truncate text-sm text-foreground/85">
-                    {isPaused(session) ? "Paused · " : ""}
-                    {current.parent.id === session.root.id ? (
-                      session.root.title
-                    ) : (
-                      <>
-                        {current.parent.title}
-                        <span className="max-sm:hidden">
-                          {" "}
-                          · {session.root.title}
-                        </span>
-                      </>
-                    )}
-                  </span>
-                </span>
-              </>
-            )}
-          </button>
-
-          <Button
-            type="button"
-            className={cn(
-              "h-12 rounded-full px-4 font-semibold max-sm:size-11 max-sm:px-0 [&_svg]:size-5",
-              tintedType(timer) &&
-                "bg-foreground text-background hover:bg-foreground/85"
-            )}
-            aria-label={primary.label}
-            disabled={primary.disabled}
-            onClick={() => press(primary.action)}
-          >
-            <PrimaryIcon data-icon="inline-start" />
-            <span className="max-sm:sr-only">{primary.label}</span>
-          </Button>
-          {lap ? (
-            <Button
-              type="button"
-              variant="ghost"
-              className="size-11"
-              aria-label={lap.label}
-              title={lap.hint}
-              onClick={() => act(lap.action)}
-            >
-              <Flag />
-            </Button>
-          ) : null}
-          {next ? (
+    <div
+      className={cn(
+        "flex min-h-8 min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1",
+        className
+      )}
+    >
+      {live ? (
+        <span className="flex shrink-0 items-center gap-1.5">
+          {!ended ? (
             <Button
               type="button"
               variant="outline"
-              className="h-11 bg-background px-3 max-sm:size-11 max-sm:rounded-full max-sm:px-0"
-              aria-label={next.label}
-              title={next.hint}
-              onClick={() => act(next.action)}
+              size="sm"
+              className="shrink-0 max-md:h-10"
+              disabled={primary.disabled}
+              onClick={() => act(primary.action)}
             >
-              {next.skip ? (
-                <SkipForward data-icon="inline-start" />
-              ) : (
-                <Check data-icon="inline-start" />
-              )}
-              <span className="max-sm:sr-only">{next.label}</span>
+              <PrimaryIcon
+                data-icon="inline-start"
+                className={filledIcon(primary.icon)}
+              />
+              {primary.label}
             </Button>
           ) : null}
-          {offersLogTime(timer) && !logTime.open ? (
-            <LogTimeButton compact onClick={logTime.show} />
+          <Clock timer={timer} className="text-sm" />
+        </span>
+      ) : null}
+      {ended ? <PausedLabel ended /> : null}
+      {done ? (
+        <>
+          {took > 0 ? (
+            <span className="shrink-0 text-sm">
+              Took <span className="tabular-nums">{clock(took)}</span>
+            </span>
           ) : null}
-          <span aria-hidden className="mx-1 h-8 w-px bg-border max-sm:hidden" />
           <Button
+            ref={addRef}
             type="button"
             variant="outline"
-            className="h-11 bg-background px-3 max-sm:size-11 max-sm:px-0"
-            aria-label="Full screen"
-            title="Full screen"
-            onClick={() => fullScreen.enter(timer.routine.id)}
+            size="sm"
+            className="shrink-0 max-md:h-10"
+            onClick={() => offer.show("timer")}
           >
-            <Maximize2 data-icon="inline-start" />
-            <span className="max-sm:sr-only">Full screen</span>
+            <Plus data-icon="inline-start" />
+            Add time
           </Button>
+        </>
+      ) : null}
+      {!live && !done && finished ? <DoneLine timer={timer} /> : null}
+      {!live && !done && !finished ? <IdleValue timer={timer} /> : null}
+      {/* The chosen part shares a line with the buttons and shortens rather than wrap. */}
+      <div className="flex min-w-0 flex-1 items-center gap-1.5">
+        {narrowed && (live || phase === "scopeDone") ? (
+          <span className="min-w-0 truncate text-sm text-muted-foreground">
+            Only {session.scope?.title}
+          </span>
+        ) : null}
+        <div className="ml-auto flex shrink-0 items-center">
+          {live ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="shrink-0 text-muted-foreground max-md:size-10"
+              aria-label="Full screen"
+              title="Full screen"
+              onClick={() => fullScreen.enter(timer.routine.id)}
+            >
+              <Maximize2 />
+            </Button>
+          ) : null}
+          <TimerMenu timer={timer} surface={surface} done={done} />
         </div>
       </div>
     </div>
   )
+}
+
+function IdleValue({ timer }: { timer: Routine }) {
+  const { session, act } = timer
+  const { current } = session
+  const only =
+    session.scope && session.scope.id !== session.root.id ? session.scope : null
+  const leaves = only ? session.scoped : session.leaves
+  const planned = plannedSeconds(leaves)
+  const ownTimer = leaves.length === 1 && current?.node.id === session.root.id
+  const startable = !controlsOf(session).primary.disabled
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="shrink-0 max-md:h-10"
+        title={startable ? undefined : "Every activity in it is canceled"}
+        disabled={!startable}
+        onClick={() => act({ kind: only ? "play" : "playAll" })}
+      >
+        <Play data-icon="inline-start" className="fill-current" />
+        Start
+      </Button>
+      {ownTimer && current ? (
+        <TimerField
+          workspaceId={timer.workspaceId}
+          node={current.node}
+          variant="compact"
+          className="h-7 gap-1 px-2 max-md:h-10"
+        />
+      ) : (
+        <>
+          {planned > 0 ? (
+            <span className="shrink-0 text-sm text-muted-foreground tabular-nums">
+              {clock(planned)}
+            </span>
+          ) : null}
+          {only ? (
+            <span className="min-w-0 truncate text-sm text-muted-foreground">
+              Only {only.title}
+            </span>
+          ) : null}
+        </>
+      )}
+    </>
+  )
+}
+
+// Everything but the main action, each item saying what it does. Restart asks first, over
+// the page rather than pushing it down.
+function TimerMenu({
+  timer,
+  surface,
+  done,
+  className,
+}: {
+  timer: Routine
+  surface: Surface
+  done: boolean
+  className?: string
+}) {
+  const [asking, setAsking] = useAtom(confirmStartOverAtom)
+  const anchorRef = useRef<HTMLButtonElement>(null)
+  const setSound = useSetActivitySound(timer.workspaceId)
+  const { data: stored } = useQuery(
+    activityQuery(timer.workspaceId, timer.routine.id)
+  )
+  const { session, routine } = timer
+  const live =
+    (session.phase === "running" || session.phase === "paused") &&
+    session.current !== null
+  // A countdown that ended can go another round; its first round stays waiting. Otherwise
+  // only something done or finished plays again.
+  const again = timerEnded(session)
+    ? controlsOf(session).primary.action
+    : !live &&
+        (done || session.phase === "finished" || session.phase === "scopeDone")
+      ? replayOf(session, logTargetOf(timer).id)
+      : null
+  const startOver = offersStartOver(session)
+  const narrowed =
+    session.scope !== null &&
+    session.scope.id !== session.root.id &&
+    session.phase !== "finished"
+  const sound = routine.timer.sound
+  const type = timer.typeOf(routine)
+  const soundLocked = routine.children.length === 0 && !stored?.activity.timer
+  const confirming =
+    asking?.surface === surface && asking.routineId === routine.id
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              ref={anchorRef}
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className={cn(
+                "shrink-0 text-muted-foreground max-md:size-10",
+                className
+              )}
+              aria-label="More timer actions"
+              title="More timer actions"
+            />
+          }
+        >
+          <Ellipsis />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-48">
+          {again ? (
+            <DropdownMenuItem
+              className="max-md:min-h-11"
+              onClick={() => timer.act(again)}
+            >
+              <RotateCw />
+              Do again
+            </DropdownMenuItem>
+          ) : null}
+          {narrowed ? (
+            <DropdownMenuItem
+              className="max-md:min-h-11"
+              onClick={() => timer.act({ kind: "widen" })}
+            >
+              <ListRestart />
+              Back to the whole routine
+            </DropdownMenuItem>
+          ) : null}
+          {startOver ? (
+            <DropdownMenuItem
+              className="max-md:min-h-11"
+              onClick={() => setAsking({ surface, routineId: routine.id })}
+            >
+              <RotateCcw />
+              Restart timer…
+            </DropdownMenuItem>
+          ) : null}
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger className="max-md:min-h-11">
+              {sound === "none" ? <VolumeX /> : <Volume2 />}
+              Sound: {timerSoundLabels[sound]}
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="w-48">
+              <DropdownMenuGroup>
+                {soundLocked ? (
+                  <DropdownMenuLabel className="font-normal">
+                    {type
+                      ? `Set by its type, ${type.name}`
+                      : "Give it a countdown to choose one"}
+                  </DropdownMenuLabel>
+                ) : null}
+                <DropdownMenuRadioGroup
+                  value={sound}
+                  onValueChange={(next) => {
+                    previewSound(next as TimerSound)
+                    setSound.mutate(
+                      { id: routine.id, sound: next as TimerSound },
+                      { onError: () => toast.error("Couldn't save the sound.") }
+                    )
+                  }}
+                >
+                  {TIMER_SOUNDS.map((option) => (
+                    <DropdownMenuRadioItem
+                      key={option}
+                      value={option}
+                      disabled={soundLocked}
+                      className="max-md:min-h-11"
+                    >
+                      {timerSoundLabels[option]}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuGroup>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <Popover
+        open={confirming}
+        onOpenChange={(open) => {
+          if (!open) setAsking(null)
+        }}
+      >
+        <PopoverContent anchor={anchorRef} align="end" className="w-72 p-3">
+          <StartOverConfirm timer={timer} surface={surface} />
+        </PopoverContent>
+      </Popover>
+    </>
+  )
+}
+
+function Dock({
+  timer,
+  workspaceSlug,
+}: {
+  timer: Routine
+  workspaceSlug: string
+}) {
+  const { session, act } = timer
+  const fullScreen = useFullScreen()
+  const { current, phase } = session
+  if (phase === "idle") return null
+  const { primary } = controlsOf(session)
+  const PrimaryIcon = primaryIcons[primary.icon]
+  const live = (phase === "running" || phase === "paused") && current !== null
+  const target = targetOf(timer)
+  return (
+    <div className="flex justify-center px-4 pt-1 pb-3 max-sm:px-2 max-sm:pb-2">
+      <div className="flex max-w-xl min-w-0 items-center gap-2.5 rounded-xl border bg-popover py-1.5 pr-1.5 pl-2 shadow-lg max-sm:w-full">
+        {live ? (
+          <Button
+            type="button"
+            variant={finishLeads(timer) ? "outline" : "default"}
+            size="icon-lg"
+            className="shrink-0 rounded-full max-sm:size-11"
+            aria-label={primary.label}
+            title={primary.label}
+            disabled={primary.disabled}
+            onClick={() => act(primary.action)}
+          >
+            <PrimaryIcon className={filledIcon(primary.icon)} />
+          </Button>
+        ) : (
+          <DoneLine timer={timer} className="pl-1" />
+        )}
+        {live ? <Clock timer={timer} className="text-xl leading-none" /> : null}
+        <Link
+          to={ACTIVITY_PATH}
+          params={{ workspace: workspaceSlug, activityId: target.id }}
+          title={`Go to ${target.title}`}
+          className="flex min-w-0 flex-1 items-baseline gap-1.5 truncate rounded-md px-1 py-1 text-sm hover:bg-accent max-sm:min-h-11 max-sm:items-center"
+        >
+          <span dir="auto" className="truncate font-medium">
+            {target.title}
+          </span>
+          {live && current.node.id !== target.id ? (
+            <span dir="auto" className="truncate text-muted-foreground">
+              · {current.node.title}
+            </span>
+          ) : null}
+        </Link>
+        {live && isPaused(session) ? (
+          <PausedLabel ended={timerEnded(session)} />
+        ) : null}
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-lg"
+          className="shrink-0 text-muted-foreground max-sm:size-11"
+          aria-label="Full screen"
+          title="Full screen"
+          onClick={() => fullScreen.enter(timer.routine.id)}
+        >
+          <Maximize2 />
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+// A stopwatch has nothing to drain, so it shows its digits without a ring.
+function ClockFace({ timer }: { timer: Routine }) {
+  const node = timer.session.current?.node
+  if (!node) return null
+  if (node.timer.mode === "up") {
+    return (
+      <Clock
+        timer={timer}
+        className="text-[clamp(4.5rem,20vw,10rem)] leading-none"
+      />
+    )
+  }
+  // The digits scale with the ring (cqw), and an hour-long 1:29:59 needs a smaller face to fit.
+  const long = (clockText(timer)?.length ?? 0) > 5
+  return (
+    <TimerRing timer={timer} className="w-[min(72vw,40vh,30rem)]">
+      <div className="flex flex-col items-center gap-2">
+        <Clock
+          timer={timer}
+          className={cn("leading-none", long ? "text-[19cqw]" : "text-[25cqw]")}
+        />
+        <span className="text-lg text-muted-foreground tabular-nums">
+          of {clock(node.timer.seconds)}
+        </span>
+      </div>
+    </TimerRing>
+  )
+}
+
+// Back to the timer's activity. Already on it, leaving full screen steps back to the page;
+// from elsewhere the link replaces the full-screen address, so Back skips it.
+function ToActivity({
+  timer,
+  workspaceSlug,
+  className,
+  children,
+}: {
+  timer: Routine
+  workspaceSlug: string
+  className: string
+  children: React.ReactNode
+}) {
+  const fullScreen = useFullScreen()
+  const pageId = useParams({
+    strict: false,
+    select: (params) => params.activityId ?? null,
+  })
+  const target = targetOf(timer)
+  if (pageId === target.id) {
+    return (
+      <button
+        type="button"
+        title={`Back to ${target.title}`}
+        className={className}
+        onClick={() => void fullScreen.exit()}
+      >
+        {children}
+      </button>
+    )
+  }
+  return (
+    <Link
+      to={ACTIVITY_PATH}
+      params={{ workspace: workspaceSlug, activityId: target.id }}
+      search={{}}
+      replace
+      title={`Go to ${target.title}`}
+      className={className}
+      onClick={(event) => {
+        // Opened in a new tab, this tab stays in full screen.
+        if (event.metaKey || event.ctrlKey || event.shiftKey) return
+        fullScreen.forget()
+      }}
+    >
+      {children}
+    </Link>
+  )
+}
+
+function FinishedFace({
+  timer,
+  workspaceSlug,
+}: {
+  timer: Routine
+  workspaceSlug: string
+}) {
+  const summary = summaryOf(timer.session)
+  const again = replayOf(timer.session, timerTargetId(timer.session))
+  const open = !timer.session.run.done.includes(timerTargetId(timer.session))
+  const seconds = open ? summary.seconds : summary.recorded
+  return (
+    <>
+      <div className="flex flex-col items-center gap-3">
+        {open ? (
+          <span className="text-lg text-muted-foreground">Timer finished</span>
+        ) : (
+          <span className="grid size-14 place-items-center rounded-full bg-primary/10 text-primary">
+            <Check className="size-7" strokeWidth={2.5} />
+          </span>
+        )}
+        <span
+          dir="auto"
+          className="line-clamp-2 text-3xl font-semibold lg:text-4xl"
+        >
+          {summary.node.title || "Untitled"}
+        </span>
+        {seconds > 0 ? (
+          <span className="text-5xl font-medium tracking-tight text-foreground/80 tabular-nums">
+            {clock(seconds)}
+          </span>
+        ) : null}
+      </div>
+      <div className="flex flex-wrap items-center justify-center gap-3">
+        <ToActivity
+          timer={timer}
+          workspaceSlug={workspaceSlug}
+          className={cn(
+            buttonVariants(),
+            "h-14 min-w-44 rounded-full px-8 text-base font-semibold"
+          )}
+        >
+          Back to the activity
+        </ToActivity>
+        {again ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11 rounded-full px-5 text-sm has-data-[icon=inline-start]:pl-4 [&_svg]:size-4"
+            onClick={() => timer.act(again)}
+          >
+            <RotateCw data-icon="inline-start" />
+            Do again
+          </Button>
+        ) : null}
+      </div>
+    </>
+  )
+}
+
+// The keys that work right now, so the hint never promises one that doesn't.
+const keyHint = (controls: ReturnType<typeof controlsOf>, steps: boolean) => {
+  const { primary, next, lap } = controls
+  const back = steps && controls.prev !== null && !controls.prev.disabled
+  const space =
+    primary.icon === "pause"
+      ? "Space pauses"
+      : primary.icon === "again"
+        ? "Space starts again"
+        : primary.label === "Resume"
+          ? "Space resumes"
+          : "Space starts"
+  return [
+    primary.disabled ? null : space,
+    back && next
+      ? "← → move between activities"
+      : back
+        ? "← goes back"
+        : next
+          ? "→ moves on"
+          : null,
+    lap ? "L laps" : null,
+    "Esc closes",
+  ]
+    .filter((part) => part !== null)
+    .join(" · ")
 }
 
 const INTERACTIVE =
@@ -1226,20 +1504,19 @@ const INTERACTIVE =
 
 function RunMode({
   timer,
-  backTo,
-  timezone,
+  workspaceSlug,
 }: {
   timer: Routine
-  backTo: string
-  timezone: string
+  workspaceSlug: string
 }) {
   const { session, act } = timer
   const fullScreen = useFullScreen()
-  const press = usePress(timer, "full")
   const { current, phase } = session
   const controls = controlsOf(session)
-  const surface = surfaceOf(timer)
+  const type = runningType(timer)
   const popupRef = useRef<HTMLDivElement>(null)
+  const target = targetOf(timer)
+  const finished = phase === "finished" || phase === "scopeDone" || !current
   return (
     <Dialog.Root
       open
@@ -1266,7 +1543,8 @@ function RunMode({
             }
           }}
           onKeyDown={(event) => {
-            if (event.target !== event.currentTarget) return
+            // The finished screen's main action is a link; keys never start a new run there.
+            if (event.target !== event.currentTarget || finished) return
             // Holding a key down would act once per repeat: Next would race down the routine.
             if (event.repeat) {
               if (event.key === " ") event.preventDefault()
@@ -1274,14 +1552,15 @@ function RunMode({
             }
             if (event.key === " ") {
               event.preventDefault()
-              if (!controls.primary.disabled) press(controls.primary.action)
+              if (!controls.primary.disabled) act(controls.primary.action)
             }
             if (event.key === "ArrowRight" && controls.next)
               act(controls.next.action)
             if (
               event.key === "ArrowLeft" &&
               controls.prev &&
-              !controls.prev.disabled
+              !controls.prev.disabled &&
+              stepsBack(timer)
             ) {
               act(controls.prev.action)
             }
@@ -1289,68 +1568,90 @@ function RunMode({
               act(controls.lap.action)
             }
           }}
-          style={surface.style}
+          style={typeStyle(type)}
           className={cn(
             "fixed inset-0 z-50 flex flex-col bg-background transition-colors duration-500 outline-none",
-            surface.className === tintClass
-              ? "bg-[color-mix(in_oklch,var(--swatch)_18%,var(--color-background))]"
-              : surface.className
+            type &&
+              "bg-[color-mix(in_oklch,var(--swatch)_14%,var(--color-background))]"
           )}
         >
-          <header className="flex w-full justify-end px-4 pt-3 md:px-6 md:pt-6">
-            <Button
-              type="button"
-              variant="outline"
-              className="h-10 gap-2 bg-background px-4 text-sm font-medium shadow-xs max-md:h-11 [&_svg]:size-4"
-              onClick={() => void fullScreen.exit()}
-              title="Back to the page (Esc)"
+          <header className="flex w-full items-center justify-between gap-3 px-4 pt-3 md:px-6 md:pt-5">
+            <ToActivity
+              timer={timer}
+              workspaceSlug={workspaceSlug}
+              className="flex min-h-11 min-w-0 items-center gap-2 rounded-md px-2 text-sm font-medium text-foreground/80 hover:bg-foreground/5 hover:text-foreground"
             >
-              <Minimize2 data-icon="inline-start" />
-              Back to {backTo}
-            </Button>
+              <ArrowLeft className="size-4 shrink-0" />
+              <span dir="auto" className="truncate">
+                {target.title}
+              </span>
+            </ToActivity>
+            <span className="flex shrink-0 items-center gap-1">
+              <SoundMenu timer={timer} />
+              <MoreMenu timer={timer} surface="full" />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-lg"
+                className="text-muted-foreground max-md:size-11"
+                aria-label="Close full screen"
+                title="Close (Esc)"
+                onClick={() => void fullScreen.exit()}
+              >
+                <X />
+              </Button>
+            </span>
           </header>
-          {session.scope && session.scope.id !== session.root.id ? (
-            <div className="px-4 pt-3 md:px-8">
+          <div className="mx-auto flex w-full max-w-xl flex-col gap-3 px-4 pt-3 empty:hidden">
+            <StartOverConfirm timer={timer} surface="full" />
+            {session.scope && session.scope.id !== session.root.id ? (
               <ScopeLine timer={timer} />
-            </div>
-          ) : null}
-          <main className="flex min-h-0 flex-1 flex-col items-center justify-center-safe gap-5 overflow-y-auto px-4 pt-2 pb-8 text-center max-sm:gap-4 md:pb-10">
-            {phase === "finished" || !current ? (
-              <>
-                <Summary timer={timer} size="xl" />
-                <Controls timer={timer} size="xl" surface="full" />
-                <div className="w-full max-w-xl">
-                  <SideActions
-                    timer={timer}
-                    surface="full"
-                    size="lg"
-                    timezone={timezone}
-                  />
-                </div>
-              </>
+            ) : null}
+          </div>
+          <main className="flex min-h-0 flex-1 flex-col items-center justify-center-safe gap-6 overflow-y-auto px-4 pt-2 pb-8 text-center max-sm:gap-5 md:pb-10 [@media(max-height:900px)]:gap-4 [@media(max-height:900px)]:pb-4">
+            {finished ? (
+              <FinishedFace timer={timer} workspaceSlug={workspaceSlug} />
             ) : (
               <>
-                <div className="max-sm:mt-auto">
+                {current.node.id === target.id ? null : (
                   <CurrentHeading timer={timer} size="xl" />
+                )}
+                <div className="flex flex-col items-center gap-3">
+                  <ClockFace timer={timer} />
+                  {isPaused(session) ? (
+                    <PausedLabel
+                      ended={timerEnded(session)}
+                      className="text-sm"
+                    />
+                  ) : null}
                 </div>
-                <TimerRing timer={timer} className="w-[min(72vw,48vh,36rem)]">
-                  <ClockLine timer={timer} size="xl" />
-                </TimerRing>
-                <div className="w-full max-sm:order-last max-sm:mt-auto max-sm:pb-2">
-                  <Controls timer={timer} size="xl" surface="full" />
+                <div className="flex w-full flex-col items-center gap-3">
+                  {finishLeads(timer) ? (
+                    <ToActivity
+                      timer={timer}
+                      workspaceSlug={workspaceSlug}
+                      className={cn(
+                        buttonVariants(),
+                        "h-14 min-w-44 rounded-full px-8 text-base font-semibold"
+                      )}
+                    >
+                      Back to the activity
+                    </ToActivity>
+                  ) : null}
+                  <Controls timer={timer} />
                 </div>
-                <UpNext timer={timer} size="lg" className="justify-center" />
-                <div className="flex w-full max-w-xl flex-col gap-3">
-                  <RoutineProgress timer={timer} />
-                  <SideActions
-                    timer={timer}
-                    surface="full"
-                    size="lg"
-                    timezone={timezone}
-                  />
-                </div>
-                <p className="text-sm text-foreground/60 max-md:hidden">
-                  Space pauses · ← → move between activities · Esc goes back
+                {session.next || stepsBack(timer) ? (
+                  <div className="flex w-full max-w-xl flex-col items-center gap-3">
+                    <UpNext timer={timer} />
+                    {stepsBack(timer) ? (
+                      <div className="w-full">
+                        <RoutineProgress timer={timer} />
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+                <p className="text-sm text-muted-foreground max-md:hidden">
+                  {keyHint(controls, stepsBack(timer))}
                 </p>
               </>
             )}
@@ -1361,4 +1662,5 @@ function RunMode({
   )
 }
 
-export { Dock, RunMode, SideActions, TimerField, TimerPanel }
+export { Dock, RunMode, StatusValue, TimerField, TimerValue }
+export type { PageStatus }

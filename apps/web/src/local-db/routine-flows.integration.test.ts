@@ -1,7 +1,7 @@
 import "fake-indexeddb/auto"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { now, parseUtc } from "@knight-os/server/core"
-import { logPlan } from "@/activities/log-time"
+import { backToBack, endOf, logPlan } from "@/activities/log-time"
 import {
   findNode,
   loggedSeconds,
@@ -167,7 +167,12 @@ describe("a routine, end to end", () => {
     const onCooldown = await routines.apply("guitar", { kind: "next" })
     expect(onCooldown.current?.node.id).toBe("cooldown")
     later(60)
-    const finished = await routines.apply("guitar", { kind: "sync" })
+    // The last countdown stops at "Timer ended"; Next moves past it.
+    const ended = await routines.apply("guitar", { kind: "sync" })
+    expect(ended.phase).toBe("paused")
+    expect(ended.current?.node.id).toBe("cooldown")
+    expect(runningEntry(ended.run)).toBeNull()
+    const finished = await routines.apply("guitar", { kind: "next" })
 
     expect(finished.phase).toBe("finished")
     expect(runningEntry(finished.run)).toBeNull()
@@ -272,19 +277,11 @@ describe("a routine, end to end", () => {
 
   it("logs a past session as a total, then split back to back, without ever running it", async () => {
     const { db, routines, entries, activities } = await guitarPractice()
-    const { root, run } = await readBack(routines, "guitar")
+    const { root } = await readBack(routines, "guitar")
 
     const total = logPlan(
       root,
-      run,
-      root,
-      {
-        split: false,
-        took: "45:00",
-        parts: {},
-        when: { date: "2026-11-10", time: "19:00" },
-        done: false,
-      },
+      { took: "45:00", when: { date: "2026-11-10", time: "19:00" } },
       "UTC",
       parseUtc(now())
     )
@@ -300,23 +297,19 @@ describe("a routine, end to end", () => {
     expect(runningEntry(afterTotal.run)).toBeNull()
 
     later(60)
-    const split = logPlan(
-      root,
-      run,
-      root,
-      {
-        split: true,
-        took: "00:00",
-        parts: { song: "10:00", scales2: "00:00" },
-        when: { date: "2026-11-11", time: "08:30" },
-        done: true,
-      },
-      "UTC",
-      parseUtc(now())
-    )
-    if ("error" in split) throw new Error(split.error)
+    const split = {
+      sessions: backToBack(
+        [
+          { activityId: "warmup", seconds: 300 },
+          { activityId: "scales1", seconds: 120 },
+          { activityId: "song", seconds: 600 },
+          { activityId: "scales2", seconds: 0 },
+          { activityId: "cooldown", seconds: 60 },
+        ],
+        endOf({ date: "2026-11-11", time: "08:30" }, "UTC", parseUtc(now()))
+      ),
+    }
     await entries.log(split.sessions)
-    for (const id of split.done) await activities.setStatus(id, "done")
 
     expect(
       split.sessions.map((session) => [
@@ -330,13 +323,13 @@ describe("a routine, end to end", () => {
       ["song", "2026-11-11T08:19:00.000Z", "2026-11-11T08:29:00.000Z"],
       ["cooldown", "2026-11-11T08:29:00.000Z", "2026-11-11T08:30:00.000Z"],
     ])
-    // Mark done ticks what was logged and the activity itself, not the skipped round.
+    // Adding time never changes a status.
     expect(
       await statusesOf(activities, ["guitar", "warmup", "scales1", "scales2"])
     ).toEqual({
-      guitar: "done",
-      warmup: "done",
-      scales1: "done",
+      guitar: "todo",
+      warmup: "todo",
+      scales1: "todo",
       scales2: "todo",
     })
 
@@ -347,7 +340,6 @@ describe("a routine, end to end", () => {
     expect(noteFor(afterSplit, "guitar")).toBe("logged")
     expect(noteFor(afterSplit, "song")).toBe("logged")
     expect(runningEntry(afterSplit.run)).toBeNull()
-    expect(afterSplit.current?.node.id).toBe("scales2")
     expect(await entries.running()).toBeUndefined()
 
     // Start over resets the run: what was typed in before it stays stored but no longer
@@ -365,6 +357,7 @@ describe("a routine, end to end", () => {
     expect(runningEntry(playing.run)).toMatchObject({
       activityId: "warmup",
       manual: false,
+      recording: "pending",
     })
     later(400)
     await routines.apply("guitar", { kind: "sync" })
@@ -530,69 +523,5 @@ describe("a routine, end to end", () => {
     if (!song) throw new Error("Expected the song")
     expect(loggedSeconds(onCooldown.run, song, onCooldown.now)).toBe(180)
     expect(onCooldown.current?.node.id).toBe("cooldown")
-  })
-})
-
-describe("logging a split session with Mark done", () => {
-  it("ticks a group whose only open leaf sits under a canceled subgroup", async () => {
-    const db = openDb()
-    const { activities, routines } = repositories(db)
-    const work = await new AreasRepository(db, ctx).ensureDefault("Work")
-    const base = { areaId: work.id, status: "todo" as const, origin: null }
-    await activities.createMany([
-      { ...base, id: "launch", title: "Launch", timer: up },
-      { ...base, id: "prep", parentId: "launch", title: "Prep", timer: up },
-      {
-        ...base,
-        id: "legal",
-        parentId: "prep",
-        title: "Legal",
-        status: "canceled",
-        timer: up,
-      },
-      {
-        ...base,
-        id: "contract",
-        parentId: "legal",
-        title: "Contract",
-        timer: down(600),
-      },
-      {
-        ...base,
-        id: "slides",
-        parentId: "prep",
-        title: "Slides",
-        timer: down(900),
-      },
-    ])
-    const { root, run } = await readBack(routines, "launch")
-    const plan = logPlan(
-      root,
-      run,
-      root,
-      { split: true, took: "00:00", parts: {}, when: null, done: true },
-      "UTC",
-      parseUtc(now())
-    )
-    if ("error" in plan) throw new Error(plan.error)
-    expect(plan.sessions.map((each) => each.activityId)).toEqual(["slides"])
-
-    await activities.logTime(plan.sessions, plan.done, plan.groups)
-
-    expect(
-      await statusesOf(activities, [
-        "launch",
-        "prep",
-        "legal",
-        "contract",
-        "slides",
-      ])
-    ).toEqual({
-      launch: "done",
-      prep: "done",
-      legal: "canceled",
-      contract: "todo",
-      slides: "done",
-    })
   })
 })

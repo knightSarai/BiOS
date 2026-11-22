@@ -376,6 +376,7 @@ describe("idle until the timer plays it", () => {
     start: -5000,
     end: -4000,
     manual: false,
+    recording: "pending",
   }
 
   it("old timed entries on a routine never played leave it idle", () => {
@@ -527,6 +528,7 @@ describe("a clock with milliseconds", () => {
           start,
           end: start + 600 - 0.001,
           manual: false,
+          recording: "pending",
         },
       ],
     }
@@ -610,7 +612,9 @@ describe("playing a finished part again", () => {
       ],
       review
     )
-    expect(at(first, 60).phase).toBe("scopeDone")
+    // The group's last countdown stops at "Timer ended" and waits for a choice.
+    expect(at(first, 60).phase).toBe("paused")
+    expect(at(first, 60).current?.node.id).toBe("docs")
     const ticked: Run = {
       ...at(first, 60).run,
       done: ["tests", "docs"],
@@ -621,7 +625,9 @@ describe("playing a finished part again", () => {
     expect(handedOver.phase).toBe("running")
     expect(handedOver.current?.node.id).toBe("docs")
     expect(handedOver.run.done).toEqual(["tests", "docs"])
-    expect(sessionOf(review, again, 170, ids()).phase).toBe("scopeDone")
+    const ended = sessionOf(review, again, 170, ids())
+    expect(ended.phase).toBe("paused")
+    expect(ended.current?.node.id).toBe("docs")
   })
 })
 
@@ -653,6 +659,7 @@ describe("a timer running with no cursor stored", () => {
           start: 50,
           end: null,
           manual: false,
+          recording: "pending",
         },
       ],
     }
@@ -700,7 +707,14 @@ describe("a countdown within a millisecond of its end", () => {
       started: true,
       cursor: "scales",
       entries: [
-        { id: "e1", activityId: "scales", start: 0, end: null, manual: false },
+        {
+          id: "e1",
+          activityId: "scales",
+          start: 0,
+          end: null,
+          manual: false,
+          recording: "pending",
+        },
       ],
     }
     const session = sessionOf(practice, run, 600 - 0.0005, ids())
@@ -735,14 +749,18 @@ describe("a canceled activity", () => {
 
   it("is skipped when the routine plays through", () => {
     const played = sessionOf(day, run([[0, { kind: "playAll" }]]), 100, ids())
-    expect(played.phase).toBe("finished")
+    expect(played.phase).toBe("paused")
+    expect(played.current?.node.id).toBe("plan")
     expect(timedOn(played.run, "call")).toEqual([])
   })
 
   it("isn't played when a finished routine is played again", () => {
     const finished = sessionOf(
       day,
-      run([[0, { kind: "playAll" }]]),
+      run([
+        [0, { kind: "playAll" }],
+        [100, { kind: "next" }],
+      ]),
       100,
       ids()
     ).run
@@ -750,14 +768,20 @@ describe("a canceled activity", () => {
     expect(runningEntry(again)?.activityId).toBe("inbox")
     expect(again.replay).not.toContain("call")
     const later = sessionOf(day, again, 400, ids())
-    expect(later.phase).toBe("finished")
+    expect(later.current?.node.id).toBe("plan")
     expect(timedOn(later.run, "call")).toEqual([])
   })
 
   it("isn't played when a finished part is played again from its page", () => {
     const finished = sessionOf(
       day,
-      run([[0, { kind: "playAll" }]], "wrapUp"),
+      run(
+        [
+          [0, { kind: "playAll" }],
+          [100, { kind: "next" }],
+        ],
+        "wrapUp"
+      ),
       100,
       ids()
     ).run
@@ -770,7 +794,7 @@ describe("a canceled activity", () => {
       "wrapUp"
     ).run
     const later = sessionOf(day, again, 400, ids(), "wrapUp")
-    expect(later.phase).toBe("scopeDone")
+    expect(later.current?.node.id).toBe("notes")
     expect(timedOn(later.run, "call")).toEqual([])
   })
 

@@ -31,7 +31,7 @@ import {
   ChangeTypeDialog,
 } from "./-components/ActivityTypeFields"
 import { ActivityCrumb } from "./-components/ActivityCrumb"
-import { PhoneTimer, TimerAside } from "./-components/ActivityRoutine"
+import { PropertiesAside } from "./-components/ActivityRoutine"
 import { ParentDialog } from "./-components/ParentDialog"
 import { ParentHeader, SubActivities } from "./-components/SubActivities"
 
@@ -141,11 +141,6 @@ function ActivityPage() {
                       activity={activity}
                       workspace={propertiesWorkspace}
                     />
-                    <PhoneTimer
-                      workspaceId={workspace.id}
-                      activityId={activityId}
-                      timezone={workspace.settings.timezone}
-                    />
                     <ActivityFields
                       activity={activity}
                       workspace={propertiesWorkspace}
@@ -167,11 +162,7 @@ function ActivityPage() {
               className="border-t pt-4 lg:hidden"
             />
           </div>
-          <TimerAside
-            workspaceId={workspace.id}
-            activityId={activityId}
-            timezone={workspace.settings.timezone}
-          >
+          <PropertiesAside>
             <ActivityProperties
               activity={activity}
               workspace={propertiesWorkspace}
@@ -186,7 +177,7 @@ function ActivityPage() {
               workspace={documentsWorkspace}
               className="border-t pt-4"
             />
-          </TimerAside>
+          </PropertiesAside>
         </div>
       </Page.ScrollArea>
       <ChangeTypeDialog workspaceId={workspace.id} />

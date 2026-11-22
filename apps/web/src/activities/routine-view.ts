@@ -13,6 +13,7 @@ import {
   nextOpenAfter,
   nodesOf,
   previousBefore,
+  recordedSeconds,
   runningEntry,
   timedInRun,
   typedInSeconds,
@@ -68,8 +69,8 @@ const timeNote = (result: ReturnType<typeof actualVersusPlanned>) => {
 
 type Primary = {
   label: string
-  icon: "pause" | "play" | "again" | "startOver"
-  action: Action | { kind: "askStartOver" }
+  icon: "pause" | "play" | "again"
+  action: Action
   disabled: boolean
 }
 
@@ -79,8 +80,7 @@ const nothingToPlay = (session: Session) =>
 
 const primaryOf = (session: Session): Primary => {
   const primary = primaryAction(session)
-  const plays =
-    primary.action.kind !== "pause" && primary.action.kind !== "askStartOver"
+  const plays = primary.action.kind !== "pause"
   return { ...primary, disabled: plays && nothingToPlay(session) }
 }
 
@@ -88,16 +88,11 @@ const primaryAction = (session: Session): Omit<Primary, "disabled"> => {
   switch (session.phase) {
     case "running":
       return { label: "Pause", icon: "pause", action: { kind: "pause" } }
+    // Start over clears ticks, so it lives in the menu; the main button only plays it again.
     case "finished":
-      return session.within
-        ? { label: "Play again", icon: "again", action: { kind: "playAll" } }
-        : {
-            label: "Start over",
-            icon: "startOver",
-            action: { kind: "askStartOver" },
-          }
+      return { label: "Do again", icon: "again", action: { kind: "playAll" } }
     case "scopeDone":
-      return { label: "Play again", icon: "again", action: { kind: "play" } }
+      return { label: "Do again", icon: "again", action: { kind: "play" } }
     case "idle":
       return { label: "Start", icon: "play", action: { kind: "playAll" } }
     case "paused":
@@ -124,43 +119,27 @@ const summaryOf = (session: Session) => {
     node,
     complete: session.phase === "finished" || session.phase === "scopeDone",
     seconds: loggedSeconds(session.run, node, session.now),
+    recorded: recordedSeconds(session.run, node, session.now),
   }
 }
 
-// Next moves on; on a gap it reads as Skip, and as Finish only when nothing is left to play.
-// Done on an activity you wrote ticks it before moving on; generated steps tick themselves.
+// Next moves on (Skip on a rest) without marking anything done: finishing an activity is
+// always its status, so its timed time is never settled by accident.
+// On the last activity there's nothing to move on to.
 const nextOf = (session: Session) => {
   const current = session.current
   const next = session.next?.node
-  if (!current) return null
-  const id = current.node.id
-  const title = current.node.title
+  if (!current || !next) return null
   const planned = plannedOf(current.node)
-  const saved = planned
-    ? ` (saved as ${clock(faceOf(current.node, session.run, session.now).elapsed)} of ${clock(planned)})`
+  const kept = planned
+    ? ` (keeps ${clock(faceOf(current.node, session.run, session.now).elapsed)} of ${clock(planned)})`
     : ""
-  const ticks =
-    current.node.generated === null && !session.run.done.includes(id)
-  const action: Action = ticks
-    ? { kind: "toggleDone", id, from: id }
-    : { kind: "next", from: id }
-  const finish = ticks
-    ? `Mark ${title} done${saved}`
-    : `Finish ${title}${saved}`
-  if (!next) {
-    return {
-      label: "Finish",
-      skip: false,
-      hint: ticks ? `${finish} and finish` : finish,
-      action,
-    }
-  }
   const skip = isGap(current)
   return {
-    label: skip ? "Skip" : "Done",
+    label: skip ? "Skip" : "Next",
     skip,
-    hint: `${finish} and start ${next.title}`,
-    action,
+    hint: `${skip ? "Skip" : "Leave"} ${current.node.title}${kept} and start ${next.title}`,
+    action: { kind: "next", from: current.node.id } satisfies Action,
   }
 }
 
@@ -208,10 +187,8 @@ const controlsOf = (session: Session) => {
   }
 }
 
-// Start over sits beside the controls once the routine has been played, from any page of it
-// (it starts the whole routine over), unless the main button already is Start over.
+// Start over is offered once the routine has been played (it starts the whole routine over).
 const offersStartOver = (session: Session) => {
-  if (primaryOf(session).action.kind === "askStartOver") return false
   const { phase } = session
   return (
     phase === "running" ||
@@ -219,6 +196,45 @@ const offersStartOver = (session: Session) => {
     phase === "finished" ||
     phase === "scopeDone"
   )
+}
+
+// The last countdown ran out and waits for you: check on it, then say it's done.
+const timerEnded = (session: Session) =>
+  session.phase === "paused" &&
+  session.current !== null &&
+  session.next === null &&
+  isFinished(session.current.node, session.run, session.now)
+
+// Done, an activity plays again whole: on the routine's own page from the top, not just the
+// part played on its own last. While the routine is still open, a part played on its own
+// plays again by itself.
+const replayOf = (session: Session, pageId: string): Action | null => {
+  if (
+    pageId !== session.root.id ||
+    (session.phase === "scopeDone" &&
+      !session.run.done.includes(session.root.id))
+  ) {
+    return againOf(session)
+  }
+  return session.leaves.every((leaf) => isCanceled(session.run, leaf.node.id))
+    ? null
+    : { kind: "playAll" }
+}
+
+// The activity the timer belongs to: the page it's seen from, else the part playing on its
+// own, else the whole routine. A part whose finish ended the whole routine hands it back.
+const timerTargetId = (session: Session) =>
+  session.within ??
+  (session.phase === "finished" ? null : session.scope?.id) ??
+  session.root.id
+
+// Played to the end, the routine plays again from the top; a part played on its own plays
+// that part again. Null when there's nothing left to play.
+const againOf = (session: Session): Action | null => {
+  const part = session.phase === "scopeDone"
+  const pool = part ? session.scoped : session.leaves
+  if (pool.every((leaf) => isCanceled(session.run, leaf.node.id))) return null
+  return part ? { kind: "play" } : { kind: "playAll" }
 }
 
 // What's still ahead, as a rough length; untimed activities can't be counted.
@@ -326,9 +342,13 @@ const viewFor = (session: Session, page: RoutineNode): Session => {
     : (leaves.find((leaf) => !isBehind(session.run, leaf.node.id)) ??
       leaves[0] ??
       null)
+  const timedHere = timedInRun(session.run).some((entry) =>
+    ids.has(entry.activityId)
+  )
   const phase: Session["phase"] = inside
     ? session.phase
-    : allBehind && loggedSeconds(session.run, page, session.now) > 0
+    : allBehind &&
+        (timedHere || loggedSeconds(session.run, page, session.now) > 0)
       ? "finished"
       : "idle"
   return {
@@ -389,16 +409,9 @@ const shownRoutine = (
 
 type Shown = ReturnType<typeof shownRoutine>
 
-// On the routine's own page its panel holds it on a wide screen, and once finished its card
-// holds it on a phone too, so the dock never shows it twice.
-const dockOn = (shown: NonNullable<Shown>) => {
-  if (!shown.onOwnPage) return "everywhere" as const
-  const phase =
-    shown.pageId === null
-      ? shown.session.phase
-      : pageViewOf(shown.session, shown.pageId).phase
-  return phase === "finished" ? ("nowhere" as const) : ("phone" as const)
-}
+// On the routine's own page its timer row holds it, so the dock never shows it twice.
+const dockOn = (shown: NonNullable<Shown>) =>
+  shown.onOwnPage ? ("nowhere" as const) : ("everywhere" as const)
 
 // Full screen stays on the routine it was opened for (`kept`), finished or started over, until
 // you leave, whatever the dock moves on to meanwhile.
@@ -466,6 +479,7 @@ const cuesAhead = (session: Session): ScheduledCue[] => {
 
 export {
   actualVersusPlanned,
+  againOf,
   clock,
   controlsOf,
   cuesAhead,
@@ -492,5 +506,8 @@ export {
   summaryOf,
   timeLeft,
   timeNote,
+  timerEnded,
+  replayOf,
+  timerTargetId,
 }
 export type { Primary, ScheduledCue }

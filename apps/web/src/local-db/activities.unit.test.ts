@@ -712,30 +712,23 @@ describe("sub-activities", () => {
     expect(await db.activities.count()).toBe(before)
   })
 
-  it("logs time and ticks it done together, or neither", async () => {
+  it("adds time all together or not at all, and never changes the status", async () => {
     const { db, activities, first, second } = await setupFamily()
     const session = {
       startedAt: parseUtc("2026-01-01T08:00:00.000Z"),
       endedAt: parseUtc("2026-01-01T08:10:00.000Z"),
     }
     await expect(
-      activities.logTime(
-        [
-          { ...session, activityId: first.id },
-          { ...session, activityId: "missing" },
-        ],
-        [first.id]
-      )
+      activities.logTime([
+        { ...session, activityId: first.id },
+        { ...session, activityId: "missing" },
+      ])
     ).rejects.toThrow()
     expect(await db.timeEntries.count()).toBe(0)
-    expect((await activities.byId(first.id))?.status).toBe("todo")
 
-    await activities.logTime(
-      [{ ...session, activityId: second.id }],
-      [second.id]
-    )
+    await activities.logTime([{ ...session, activityId: second.id }])
     expect(await db.timeEntries.count()).toBe(1)
-    expect((await activities.byId(second.id))?.status).toBe("done")
+    expect((await activities.byId(second.id))?.status).toBe("todo")
   })
 
   it("rejects a parent that would make a loop or doesn't exist", async () => {

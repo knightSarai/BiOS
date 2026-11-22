@@ -10,7 +10,8 @@ import {
 import type { StatusNames, TypeColor } from "@/activities/activity-types"
 import type { AreaColor } from "@/activities/areas"
 import type { FieldKind, FieldOption, FieldValues } from "@/activities/fields"
-import type { ActivityStatus } from "@/activities/status"
+import { isOpenStatus, type ActivityStatus } from "@/activities/status"
+import type { Recording } from "@/activities/routine"
 import type { TimerConfig } from "@/activities/timer"
 import type { GoalStatus } from "@/goals/status"
 import type { OwnerKey } from "@/notebook/owners"
@@ -128,7 +129,7 @@ type TimeEntryRow = {
   startedAt: UtcDatetime
   endedAt: UtcDatetime | null
 } & (
-  | { source: "timer" }
+  | { source: "timer"; recording: Recording }
   // The session may be days old, so when it was typed in decides which run it counts in.
   | { source: "manual"; endedAt: UtcDatetime; loggedAt: UtcDatetime }
 )
@@ -640,6 +641,46 @@ const createLocalDb = (name: string): LocalDb => {
           ),
           timestamp
         )
+      })
+  })
+  // Timed time now waits until its activity is finished. Time still open waiting; time on an
+  // activity closed, or inside a routine or group already closed, was kept when it closed,
+  // unless a routine is still playing that activity, whose clock reads it.
+  db.version(15).upgrade(async (tx) => {
+    const playing = new Set(
+      (await tx.table<RoutineRunRow, string>("routineRuns").toArray()).flatMap(
+        (run) => run.cursor ?? []
+      )
+    )
+    const rows = new Map(
+      (
+        await tx
+          .table<Omit<ActivityRow, "content">, string>("activities")
+          .toArray()
+      ).map((row) => [row.id, row])
+    )
+    const closed = (id: string | null): boolean => {
+      const row = id === null ? undefined : rows.get(id)
+      return (
+        row !== undefined && (!isOpenStatus(row.status) || closed(row.parentId))
+      )
+    }
+    const kept = (id: string) => {
+      const row = rows.get(id)
+      if (!row) return false
+      return (
+        !isOpenStatus(row.status) || (!playing.has(id) && closed(row.parentId))
+      )
+    }
+    await tx
+      .table<TimeEntryRow, string>("timeEntries")
+      .filter((entry) => entry.source === "timer")
+      .modify((entry) => {
+        if (entry.source !== "timer") return
+        entry.recording =
+          entry.endedAt !== null && kept(entry.activityId)
+            ? "recorded"
+            : "pending"
       })
   })
   return db

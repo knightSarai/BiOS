@@ -27,16 +27,27 @@ import {
   fullScreenExit,
   keptAfterExit,
   pageViewOf,
-  type Primary,
+  timerTargetId,
 } from "./routine-view"
 import { clockAtom } from "./timer-clock"
 import { unlockAudio } from "./timer-runner"
 
-// The places a routine is shown. A phone can show the page's panel and the dock at once, so
-// Start over's question and the Log time form open only where they were asked for.
-type Surface = "panel" | "dock" | "full"
+// The places Start over's question can open: the Timer property in the sidebar or on a phone
+// (both are mounted, one hidden), or full screen, so it opens only where it was asked for.
+type Surface = "panel" | "phone" | "full"
 
-const confirmStartOverAtom = atom<Surface | null>(null)
+// Keyed by routine too, so a question left open never resurfaces on another routine.
+const confirmStartOverAtom = atom<{
+  surface: Surface
+  routineId: string
+} | null>(null)
+
+// The actions that start the timer playing; one that targets a done activity reopens it.
+const PLAYS: Action["kind"][] = ["play", "playAll"]
+
+// Counts each routine's timer actions from any surface, so an offer to add time made before
+// one on its routine is stale; another routine's timer leaves it alone.
+const timerActionsAtom = atom<Record<string, number>>({})
 
 // The routine full screen was opened for, so it can stay there once it finishes even where
 // a finished routine is no longer shown.
@@ -67,14 +78,36 @@ const useRoutineSession = (
 }
 
 // Audio is unlocked inside the click, since browsers allow it only there.
-const useRoutineAct = (workspaceId: string, session: Session) => {
+const useRoutineAct = (
+  workspaceId: string,
+  routineId: string,
+  session: Session
+) => {
   const routineAction = useRoutineAction(workspaceId)
   const setAsking = useSetAtom(confirmStartOverAtom)
+  const countAction = useSetAtom(timerActionsAtom)
   return (action: Action) => {
     unlockAudio()
+    countAction((counts) => ({
+      ...counts,
+      [routineId]: (counts[routineId] ?? 0) + 1,
+    }))
     if (action.kind === "startOver") setAsking(null)
+    // Playing it all again replays the activity seen, not just the part played last.
+    const target =
+      action.kind === "playAll"
+        ? (session.within ?? session.root.id)
+        : timerTargetId(session)
     routineAction.mutate(
-      { activityId: session.root.id, action, within: session.within },
+      {
+        activityId: session.root.id,
+        action,
+        within: session.within,
+        reopen:
+          PLAYS.includes(action.kind) && session.run.done.includes(target)
+            ? target
+            : null,
+      },
       { onError: () => toast.error(failureOf(action)) }
     )
   }
@@ -114,7 +147,7 @@ const useRoutine = (
 ) => {
   const { data: types = [] } = useQuery(activityTypesQuery(workspaceId))
   const session = pageId === null ? global : pageViewOf(global, pageId)
-  const act = useRoutineAct(workspaceId, session)
+  const act = useRoutineAct(workspaceId, global.root.id, session)
   return {
     session,
     routine: global.root,
@@ -124,17 +157,6 @@ const useRoutine = (
       node?.typeId
         ? (types.find((type) => type.id === node.typeId) ?? null)
         : null,
-  }
-}
-
-const usePress = (timer: Routine, surface: Surface) => {
-  const setAsking = useSetAtom(confirmStartOverAtom)
-  return (action: Primary["action"]) => {
-    if (action.kind === "askStartOver") {
-      setAsking(surface)
-      return
-    }
-    timer.act(action)
   }
 }
 
@@ -151,11 +173,15 @@ const useFullScreen = () => {
   const router = useRouter()
   const [routine, setRoutine] = useAtom(fullScreenRoutineAtom)
   const [entered, setEntered] = useAtom(enteredFullScreenAtom)
+  const setAsking = useSetAtom(confirmStartOverAtom)
   return {
     open,
+    // A question opened in full screen starts closed each time, however it was last left (Back
+    // skips exit).
     enter: (routineId: string) => {
       setRoutine(routineId)
       setEntered(true)
+      setAsking((asking) => (asking?.surface === "full" ? null : asking))
       void navigate({
         to: ".",
         search: (prev) => ({ ...prev, full: true as const }),
@@ -164,9 +190,12 @@ const useFullScreen = () => {
     // The kept routine is only read while the address says full screen, so it's dropped once
     // the address no longer does; dropped sooner, full screen would show another routine
     // until it closes. Going back leaves it for the next enter to replace.
+    // Leaving by a link to another page: the address drops full screen on its own.
+    forget: () => setEntered(false),
     exit: async () => {
       const exitedFrom = routine
       setEntered(false)
+      setAsking((asking) => (asking?.surface === "full" ? null : asking))
       if (fullScreenExit(entered, router.history.canGoBack()) === "back") {
         router.history.back()
         return
@@ -184,8 +213,8 @@ const useFullScreen = () => {
 export {
   confirmStartOverAtom,
   fullScreenRoutineAtom,
+  timerActionsAtom,
   useFullScreen,
-  usePress,
   useResumeRoutine,
   useRoutine,
   useRoutineSession,

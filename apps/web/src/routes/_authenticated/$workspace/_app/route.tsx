@@ -43,7 +43,7 @@ function RouteComponent() {
           <RoutineChrome
             workspace={{
               id: workspace.id,
-              timezone: workspace.settings.timezone,
+              slug: workspace.slug,
             }}
           />
         </ClientOnly>

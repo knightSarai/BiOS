@@ -1,10 +1,8 @@
 import { useQuery } from "@tanstack/react-query"
-import { Navigate, useMatch, useMatches } from "@tanstack/react-router"
+import { Navigate, useMatch } from "@tanstack/react-router"
 import { useAtomValue } from "jotai"
-import { breadcrumbItems } from "@layout/core/breadcrumb-items"
 import { activeRoutineQuery, routineQuery } from "@/local-db/activity-queries"
-import { cn } from "@/lib/utils"
-import { findNode, type Session } from "../routine"
+import type { Session } from "../routine"
 import { dockOn, fullScreenOf, shownRoutine } from "../routine-view"
 import {
   fullScreenRoutineAtom,
@@ -23,28 +21,24 @@ const dropFullScreen = (
   <Navigate to="." search={(prev) => ({ ...prev, full: undefined })} replace />
 )
 
+type ChromeWorkspace = { id: string; slug: string }
+
 function DockFor({
   workspace,
   global,
   pageId,
   onOwnPage,
 }: {
-  workspace: { id: string; timezone: string }
+  workspace: ChromeWorkspace
   global: Session
   pageId: string | null
   onOwnPage: boolean
 }) {
   const timer = useRoutine(workspace.id, global, pageId)
-  const on = dockOn({ session: global, pageId, onOwnPage })
+  if (dockOn({ session: global, pageId, onOwnPage }) === "nowhere") return null
   return (
-    <div
-      className={cn(
-        "shrink-0",
-        on === "phone" && "lg:hidden",
-        on === "nowhere" && "hidden"
-      )}
-    >
-      <Dock timer={timer} timezone={workspace.timezone} />
+    <div className="shrink-0">
+      <Dock timer={timer} workspaceSlug={workspace.slug} />
     </div>
   )
 }
@@ -53,22 +47,16 @@ function FullScreenFor({
   workspace,
   global,
   pageId,
-  backTo,
 }: {
-  workspace: { id: string; timezone: string }
+  workspace: ChromeWorkspace
   global: Session
   pageId: string | null
-  backTo: string
 }) {
   const timer = useRoutine(workspace.id, global, pageId)
-  return <RunMode timer={timer} backTo={backTo} timezone={workspace.timezone} />
+  return <RunMode timer={timer} workspaceSlug={workspace.slug} />
 }
 
-function RoutineChrome({
-  workspace,
-}: {
-  workspace: { id: string; timezone: string }
-}) {
+function RoutineChrome({ workspace }: { workspace: ChromeWorkspace }) {
   useResumeRoutine(workspace.id)
   const fullScreen = useFullScreen()
   const fullScreenId = useAtomValue(fullScreenRoutineAtom)
@@ -78,9 +66,6 @@ function RoutineChrome({
       shouldThrow: false,
       select: (match) => match.params.activityId,
     }) ?? null
-  const pageLabel = useMatches({
-    select: (matches) => breadcrumbItems(matches).at(-1)?.label ?? "the page",
-  })
   const activeQuery = useQuery(activeRoutineQuery(workspace.id))
   const ownQuery = useQuery({
     ...routineQuery(workspace.id, pageId ?? ""),
@@ -103,8 +88,6 @@ function RoutineChrome({
   const keptSession = useRoutineSession(keep ? kept : null)
   const shown = shownRoutine(ownSession, pageId, activeSession)
   const full = fullScreen.open ? fullScreenOf(keptSession, shown) : null
-  const pageNode =
-    ownSession && pageId !== null ? findNode(ownSession.root, pageId) : null
   return (
     <>
       {shown ? (
@@ -122,7 +105,6 @@ function RoutineChrome({
           workspace={workspace}
           global={full.session}
           pageId={full.pageId}
-          backTo={pageNode?.title || pageLabel}
         />
       ) : fullScreen.open && !loading ? (
         // A full-screen address with nothing to show (reloaded after its routine finished,

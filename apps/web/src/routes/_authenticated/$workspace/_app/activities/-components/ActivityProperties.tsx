@@ -1,3 +1,4 @@
+import { useRef } from "react"
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
 import { useSetAtom } from "jotai"
@@ -19,21 +20,27 @@ import { AreaMenu } from "@/activities/components/AreaMenu"
 import { ColorDot } from "@/activities/components/ColorDot"
 import { DueDateMenu } from "@/activities/components/DueDateMenu"
 import { GoalMenu } from "@/activities/components/GoalMenu"
+import { AddTime, useAddTimeOffer } from "@/activities/components/LogTime"
+import {
+  StatusValue,
+  TimerValue,
+  type PageStatus,
+} from "@/activities/components/RoutineTimer"
 import { StatusIcon } from "@/activities/components/StatusIcon"
-import { StatusMenu } from "@/activities/components/StatusMenu"
-import { statusName } from "@/activities/activity-types"
+import { findNode, type Session } from "@/activities/routine"
+import { useRoutine, useRoutineSession } from "@/activities/use-routine"
 import { GoalIcon } from "@/goals/components/GoalIcon"
 import {
   useMoveActivityToArea,
   useSetActivityDueDate,
   useSetActivityGoal,
-  useSetActivityStatus,
 } from "@/local-db/activity-mutations"
 import { goalListQuery } from "@/local-db/goal-queries"
 import {
   activityQuery,
   activitySummaryQuery,
   areasQuery,
+  routineQuery,
 } from "@/local-db/activity-queries"
 import type { ActivityOrigin, ActivityRow } from "@/local-db/db"
 import { documentQuery } from "@/local-db/document-queries"
@@ -148,33 +155,6 @@ type ActivityPropertiesProps = {
 }
 
 type PropertyControlProps = ActivityPropertiesProps & { className: string }
-
-function StatusControl({
-  activity,
-  workspace,
-  className,
-}: PropertyControlProps) {
-  const setStatus = useSetActivityStatus(workspace.id)
-  const { type } = useActivityType(activity, workspace.id)
-  const label = statusName(activity.status, type?.statusNames ?? null)
-  return (
-    <StatusMenu
-      status={activity.status}
-      names={type?.statusNames ?? null}
-      onChange={(status) => setStatus.mutate({ id: activity.id, status })}
-      trigger={
-        <button
-          type="button"
-          aria-label={`Status: ${label}`}
-          className={className}
-        >
-          <StatusIcon status={activity.status} />
-          {label}
-        </button>
-      }
-    />
-  )
-}
 
 function AreaControl({ activity, workspace, className }: PropertyControlProps) {
   const { data: areas } = useSuspenseQuery(areasQuery(workspace))
@@ -347,10 +327,97 @@ function useActivityKey(activity: ActivityRow, workspace: Workspace) {
   return activityKey(area?.key ?? "?", activity.number)
 }
 
+// Status, then the timer that finishes it, as two of the activity's properties. Keyed by
+// activity where it's used, since the page itself stays mounted from one activity to the next.
+function StatusAndTimer({
+  activity,
+  workspace,
+  addTime,
+}: ActivityPropertiesProps & { addTime: "popover" | "sheet" }) {
+  const { data: state } = useQuery(routineQuery(workspace.id, activity.id))
+  const global = useRoutineSession(state)
+  const { type } = useActivityType(activity, workspace.id)
+  const status = { value: activity.status, names: type?.statusNames ?? null }
+  const offer = useAddTimeOffer(global?.root.id ?? activity.id)
+  const statusRef = useRef<HTMLButtonElement>(null)
+  return (
+    <>
+      <Property label="Status">
+        <StatusValue
+          workspaceId={workspace.id}
+          activityId={activity.id}
+          status={status}
+          offer={offer}
+          buttonRef={statusRef}
+          className={propertyButtonClassName}
+        />
+      </Property>
+      {global ? (
+        <TimerProperty
+          activity={activity}
+          workspace={workspace}
+          global={global}
+          status={status}
+          offer={offer}
+          statusRef={statusRef}
+          addTime={addTime}
+        />
+      ) : null}
+    </>
+  )
+}
+
+function TimerProperty({
+  activity,
+  workspace,
+  global,
+  status,
+  offer,
+  statusRef,
+  addTime,
+}: ActivityPropertiesProps & {
+  global: Session
+  status: PageStatus
+  offer: ReturnType<typeof useAddTimeOffer>
+  statusRef: React.RefObject<HTMLButtonElement | null>
+  addTime: "popover" | "sheet"
+}) {
+  const timer = useRoutine(workspace.id, global, activity.id)
+  const addRef = useRef<HTMLButtonElement>(null)
+  return (
+    <>
+      <Property label="Timer">
+        <TimerValue
+          timer={timer}
+          status={status}
+          offer={offer}
+          addRef={addRef}
+          surface={addTime === "popover" ? "panel" : "phone"}
+          className="px-1"
+        />
+      </Property>
+      <AddTime
+        timer={timer}
+        node={findNode(timer.routine, activity.id) ?? timer.routine}
+        offer={offer}
+        anchors={{ status: statusRef, timer: addRef }}
+        timezone={workspace.timezone}
+        variant={addTime}
+      />
+    </>
+  )
+}
+
 function ActivityProperties({ activity, workspace }: ActivityPropertiesProps) {
   const key = useActivityKey(activity, workspace)
   return (
     <div className="flex flex-col gap-1 text-sm">
+      <StatusAndTimer
+        key={activity.id}
+        activity={activity}
+        workspace={workspace}
+        addTime="popover"
+      />
       <Property label="Created">
         <CreatedAt
           activity={activity}
@@ -362,13 +429,6 @@ function ActivityProperties({ activity, workspace }: ActivityPropertiesProps) {
         <TypeControl
           activity={activity}
           activityKey={key}
-          workspace={workspace}
-          className={propertyButtonClassName}
-        />
-      </Property>
-      <Property label="Status">
-        <StatusControl
-          activity={activity}
           workspace={workspace}
           className={propertyButtonClassName}
         />
@@ -421,44 +481,49 @@ function ActivityPropertyChips({
 }: ActivityPropertiesProps) {
   const key = useActivityKey(activity, workspace)
   return (
-    <div className="mb-6 flex flex-wrap items-center gap-2 text-sm">
-      <CreatedAt
-        activity={activity}
-        workspace={workspace}
-        className="px-1 text-muted-foreground"
-      />
-      <TypeControl
-        activity={activity}
-        activityKey={key}
-        workspace={workspace}
-        className={chipClassName}
-      />
-      <StatusControl
-        activity={activity}
-        workspace={workspace}
-        className={chipClassName}
-      />
-      <AreaControl
-        activity={activity}
-        workspace={workspace}
-        className={chipClassName}
-      />
-      <GoalControl
-        activity={activity}
-        workspace={workspace}
-        className={chipClassName}
-      />
-      <ParentControl
-        activity={activity}
-        activityKey={key}
-        workspace={workspace}
-        className={chipClassName}
-      />
-      <DueDateControl
-        activity={activity}
-        workspace={workspace}
-        className={chipClassName}
-      />
+    <div className="mb-6 flex flex-col gap-3 text-sm">
+      <div className="flex flex-col gap-1">
+        <StatusAndTimer
+          key={activity.id}
+          activity={activity}
+          workspace={workspace}
+          addTime="sheet"
+        />
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <CreatedAt
+          activity={activity}
+          workspace={workspace}
+          className="px-1 text-muted-foreground"
+        />
+        <TypeControl
+          activity={activity}
+          activityKey={key}
+          workspace={workspace}
+          className={chipClassName}
+        />
+        <AreaControl
+          activity={activity}
+          workspace={workspace}
+          className={chipClassName}
+        />
+        <GoalControl
+          activity={activity}
+          workspace={workspace}
+          className={chipClassName}
+        />
+        <ParentControl
+          activity={activity}
+          activityKey={key}
+          workspace={workspace}
+          className={chipClassName}
+        />
+        <DueDateControl
+          activity={activity}
+          workspace={workspace}
+          className={chipClassName}
+        />
+      </div>
     </div>
   )
 }

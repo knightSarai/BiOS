@@ -12,12 +12,17 @@ type RoutineNode = {
 
 type Leaf = { node: RoutineNode; parent: RoutineNode }
 
+// Timed time waits until the activity is finished. Done or Start over discards it; time is
+// added back as typed in, if wanted. Rows from before keep "recorded". Discarded time is kept
+// so the clock and hand-overs still read what ran.
+type Recording = "pending" | "recorded" | "discarded"
+
 type Entry = {
   id: string
   activityId: string
   start: number
 } & (
-  | { manual: false; end: number | null }
+  | { manual: false; end: number | null; recording: Recording }
   // Typed in afterwards: never running, never moved, and it counts in the run it was
   // typed in (`logged`), however long ago the session itself was.
   | { manual: true; end: number; logged: number }
@@ -96,8 +101,11 @@ const timedInRun = (run: Run) =>
 const attemptStart = (run: Run, id: string) =>
   Math.max(runFloor(run, id), run.attemptFrom[id] ?? -Infinity)
 
+// Settled time belongs to an attempt that's over, so a reopened or replayed activity's clock
+// starts fresh.
 const inAttempt = (run: Run, id: string) => (entry: Entry) =>
   !entry.manual &&
+  entry.recording === "pending" &&
   entry.activityId === id &&
   entry.start >= attemptStart(run, id)
 
@@ -108,12 +116,48 @@ const clockSeconds = (run: Run, id: string, now: number) =>
     .filter(inAttempt(run, id))
     .reduce((total, entry) => total + entrySeconds(entry, now), 0)
 
+const subtreeOf = (node: RoutineNode) =>
+  new Set(nodesOf(node).map((each) => each.id))
+
+const countsInTotals = (entry: Entry) =>
+  entry.manual || entry.recording !== "discarded"
+
 const entriesWithin = (run: Run, node: RoutineNode) => {
-  const ids = new Set(nodesOf(node).map((each) => each.id))
+  const ids = subtreeOf(node)
   return run.entries
     .filter(inRun(run))
-    .filter((entry) => ids.has(entry.activityId))
+    .filter((entry) => ids.has(entry.activityId) && countsInTotals(entry))
 }
+
+const recordedSeconds = (run: Run, node: RoutineNode, now: number) =>
+  entriesWithin(run, node)
+    .filter((entry) => entry.manual || entry.recording === "recorded")
+    .reduce((total, entry) => total + entrySeconds(entry, now), 0)
+
+// Everything an activity holds across all its runs: recorded timer time and time added.
+const heldSeconds = (run: Run, node: RoutineNode, now: number) => {
+  const ids = subtreeOf(node)
+  return run.entries
+    .filter(
+      (entry) =>
+        ids.has(entry.activityId) &&
+        (entry.manual || entry.recording === "recorded")
+    )
+    .reduce((total, entry) => total + entrySeconds(entry, now), 0)
+}
+
+// Done discards everything waiting under what was finished.
+const settleTime = (run: Run, ids: Set<string>): Run => ({
+  ...run,
+  entries: run.entries.map((entry) =>
+    !entry.manual &&
+    entry.recording === "pending" &&
+    entry.end !== null &&
+    ids.has(entry.activityId)
+      ? { ...entry, recording: "discarded" }
+      : entry
+  ),
+})
 
 const loggedSeconds = (run: Run, node: RoutineNode, now: number) =>
   entriesWithin(run, node).reduce(
@@ -237,7 +281,14 @@ const openEntry = (run: Run, id: string, at: number, newId: Ids): Run => ({
   cursor: id,
   entries: [
     ...run.entries,
-    { id: newId(), activityId: id, start: at, end: null, manual: false },
+    {
+      id: newId(),
+      activityId: id,
+      start: at,
+      end: null,
+      manual: false,
+      recording: "pending",
+    },
   ],
 })
 
@@ -267,6 +318,9 @@ const startOn = (
   )
 }
 
+const endsHere = (leaves: Leaf[], run: Run, node: RoutineNode) =>
+  !isStep(node) && nextOpenAfter(leaves, run, node.id) === null
+
 // A countdown that runs out hands straight to the next activity; a count-up keeps going
 // until you move on. Rolling forward on read means no effect drives the hand-over.
 const settle = (root: RoutineNode, stored: Run, now: number, newId: Ids) => {
@@ -284,6 +338,11 @@ const settle = (root: RoutineNode, stored: Run, now: number, newId: Ids) => {
       live.start,
       now - Math.max(0, elapsed - node.timer.seconds)
     )
+    // The last countdown of an activity you wrote stops at "Timer ended": the bell says check
+    // on it, and only you say it's done.
+    if (endsHere(leaves, run, node)) {
+      return closeRunning(run, finishedAt)
+    }
     run = passBy(closeRunning(run, finishedAt), root, node)
     const next = nextOpenAfter(leaves, run, node.id)
     if (!next) return { ...run, cursor: null }
@@ -307,7 +366,9 @@ const phaseOf = (
   const played = hasTimerActivity(run) || (run.started && run.cursor !== null)
   if (
     leaves.every((leaf) => isBehind(run, leaf.node.id)) &&
-    (run.passed.length > 0 || loggedSeconds(run, root, now) > 0)
+    (run.passed.length > 0 ||
+      hasTimerActivity(run) ||
+      loggedSeconds(run, root, now) > 0)
   )
     return "finished"
   if (!played) return "idle"
@@ -736,7 +797,7 @@ const actOn = (
     }
     case "startOver":
       return done({
-        ...stopped,
+        ...settleTime(stopped, subtreeOf(root)),
         cursor: null,
         passed: [],
         done: [],
@@ -762,21 +823,22 @@ const endOverrun = (
   if (!node || node.children.length > 0 || !isFinished(node, stored, now)) {
     return stored
   }
-  const run = passBy(
-    closeRunning(withCanceledInside(root, stored), now),
-    root,
-    node
-  )
-  const next = nextOpenAfter(leavesWithin(root, run.scopeId), run, node.id)
+  const leaves = leavesWithin(root, stored.scopeId)
+  const closed = closeRunning(withCanceledInside(root, stored), now)
+  if (endsHere(leaves, closed, node)) return closed
+  const run = passBy(closed, root, node)
+  const next = nextOpenAfter(leaves, run, node.id)
   return next
     ? startOn(run, root, next.node.id, now, newId)
     : { ...run, cursor: null }
 }
 
 export {
+  heldSeconds,
   act,
   CLOCK_TOLERANCE_SECONDS,
   clockSeconds,
+  closeRunning,
   endedInAttempt,
   endOverrun,
   entriesInRun,
@@ -795,8 +857,11 @@ export {
   nodesOf,
   plannedSeconds,
   previousBefore,
+  recordedSeconds,
   runRowChanged,
   runningEntry,
+  settleTime,
+  subtreeOf,
   timedInRun,
   touchesRun,
   typedInSeconds,
@@ -804,4 +869,13 @@ export {
   tickLapped,
   withCanceledInside,
 }
-export type { Action, Entry, Leaf, Outcome, RoutineNode, Run, Session }
+export type {
+  Action,
+  Entry,
+  Leaf,
+  Outcome,
+  Recording,
+  RoutineNode,
+  Run,
+  Session,
+}

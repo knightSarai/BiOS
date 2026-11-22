@@ -123,6 +123,7 @@ function DurationChip({
   zeroLabel,
   downLabel,
   title = "Type a duration over 00:00; 00:00 is a stopwatch",
+  icon = true,
   className,
   onChange,
   onCommit,
@@ -131,6 +132,7 @@ function DurationChip({
   label: string
   zeroLabel: string
   downLabel?: string
+  icon?: boolean
   title?: string
   className?: string
   onChange?: (value: string) => void
@@ -145,7 +147,9 @@ function DurationChip({
         className
       )}
     >
-      <Timer aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+      {icon ? (
+        <Timer aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+      ) : null}
       <DurationDigits
         value={value}
         label={label}
@@ -153,9 +157,9 @@ function DurationChip({
         onCommit={onCommit}
         className={cn(zero && "text-muted-foreground")}
       />
-      {zero ? (
+      {zero && zeroLabel ? (
         <span className="text-muted-foreground">{zeroLabel}</span>
-      ) : downLabel ? (
+      ) : !zero && downLabel ? (
         <span className="text-muted-foreground">{downLabel}</span>
       ) : null}
     </label>

@@ -1,14 +1,16 @@
 import { describe, expect, it } from "vitest"
 import { parseUtc } from "@knight-os/server/core"
 import {
+  addTimeDraft,
   backToBack,
+  countedOf,
+  endOf,
   logPlan,
-  marksDone,
-  splitRows,
-  tookDefault,
+  offerShown,
+  waitingOf,
   whenLabel,
 } from "./log-time"
-import { withCanceledInside, type RoutineNode, type Run } from "./routine"
+import type { RoutineNode } from "./routine"
 
 const down = (seconds: number) => ({
   mode: "down" as const,
@@ -40,30 +42,10 @@ const release = node("release", up, [
 
 const solo = node("solo", down(90))
 
-const fresh: Run = {
-  entries: [],
-  cursor: null,
-  passed: [],
-  done: [],
-  canceled: [],
-  replay: [],
-  scopeId: null,
-  runStart: 0,
-  attemptFrom: {},
-  joinedAt: {},
-  started: false,
-}
-
 const now = parseUtc("2026-11-11T09:00:00.000Z")
 const at = (time: string) => parseUtc(`2026-11-11T${time}.000Z`)
 
-const draft = {
-  split: false,
-  took: "25:00",
-  parts: {},
-  when: null,
-  done: true,
-}
+const draft = { took: "25:00", when: null }
 
 describe("backToBack", () => {
   it("lays sessions end to end, the last one ending at When", () => {
@@ -99,281 +81,114 @@ describe("backToBack", () => {
   })
 })
 
-describe("splitRows", () => {
-  it("lists each timed activity in order, countdowns prefilled and count-ups at zero", () => {
+describe("adding time after Done", () => {
+  const stopped = at("08:40:04")
+
+  it("adds up what the timer counted and when it last stopped, rounding once", () => {
     expect(
-      splitRows(release, fresh, release).map(
-        (row) => [row.node.id, row.took] as const
-      )
-    ).toEqual([
-      ["review", "10:00"],
-      ["smoke", "05:00"],
-      ["perf", "15:00"],
-      ["notes", "00:00"],
-    ])
+      countedOf([
+        { seconds: 0.4, endedAt: at("08:30:00") },
+        { seconds: 0.4, endedAt: stopped },
+        { seconds: 0.4, endedAt: at("08:35:00") },
+      ])
+    ).toEqual({ seconds: 1, endedAt: stopped })
+    expect(countedOf([])).toEqual({ seconds: 0, endedAt: null })
   })
 
-  it("paused partway, prefills 00:00 for what's done, passed or logged in this run, timed or typed in", () => {
-    const run: Run = {
-      ...fresh,
-      runStart: 100,
-      started: true,
-      cursor: "perf",
-      done: ["review"],
-      passed: ["smoke"],
-      canceled: ["notes"],
-      entries: [
-        { id: "e0", activityId: "review", start: 100, end: 160, manual: false },
-        { id: "e1", activityId: "perf", start: 50, end: 80, manual: false },
-      ],
-    }
-    expect(
-      splitRows(release, run, release).map(
-        (row) => [row.node.id, row.took] as const
-      )
-    ).toEqual([
-      ["review", "00:00"],
-      ["smoke", "00:00"],
-      ["perf", "15:00"],
-    ])
-    const typedIn: Run = {
-      ...run,
-      entries: [
-        ...run.entries,
-        {
-          id: "e2",
-          activityId: "perf",
-          start: 20,
-          end: 80,
-          manual: true,
-          logged: 120,
-        },
-      ],
-    }
-    expect(splitRows(release, typedIn, release).map((row) => row.took)).toEqual(
-      ["00:00", "00:00", "00:00"]
-    )
+  it("starts at what the timer counted, ending to the second it stopped", () => {
+    const draft = addTimeDraft({ seconds: 4, endedAt: stopped }, "UTC")
+    expect(draft.took).toBe("00:04")
+    expect(draft.when).toEqual({
+      date: "2026-11-11",
+      time: "08:40",
+      exact: stopped,
+    })
+    expect(endOf(draft.when, "UTC", now)).toBe(stopped)
   })
 
-  it("idle or finished, prefills every countdown and leaves out only canceled ones", () => {
-    const finished: Run = {
-      ...fresh,
-      runStart: 100,
-      done: ["review"],
-      passed: ["smoke", "perf"],
-      canceled: ["notes"],
-      entries: [
-        { id: "e0", activityId: "review", start: 100, end: 700, manual: false },
-      ],
-    }
-    expect(
-      splitRows(release, finished, release).map(
-        (row) => [row.node.id, row.took] as const
-      )
-    ).toEqual([
-      ["review", "10:00"],
-      ["smoke", "05:00"],
-      ["perf", "15:00"],
-    ])
-  })
-
-  it("counts a part played on its own that finished as mid-run, with no cursor left", () => {
-    const scopeDone: Run = {
-      ...fresh,
-      runStart: 100,
-      started: true,
-      cursor: null,
-      scopeId: "checks",
-      passed: ["smoke", "perf"],
-      entries: [
-        { id: "e0", activityId: "smoke", start: 100, end: 400, manual: false },
-        { id: "e1", activityId: "perf", start: 400, end: 1300, manual: false },
-      ],
-    }
-    expect(
-      splitRows(release, scopeDone, release).map(
-        (row) => [row.node.id, row.took] as const
-      )
-    ).toEqual([
-      ["review", "10:00"],
-      ["smoke", "00:00"],
-      ["perf", "00:00"],
-      ["notes", "00:00"],
-    ])
-  })
-
-  it("counts a finished routine with an activity reopened as mid-run", () => {
-    const reopened: Run = {
-      ...fresh,
-      runStart: 100,
-      started: true,
-      cursor: null,
-      done: ["review", "notes"],
-      passed: ["smoke"],
-      entries: [
-        { id: "e0", activityId: "review", start: 100, end: 700, manual: false },
-        { id: "e1", activityId: "smoke", start: 700, end: 1000, manual: false },
-        { id: "e2", activityId: "perf", start: 1000, end: 1900, manual: false },
-        {
-          id: "e3",
-          activityId: "notes",
-          start: 1900,
-          end: 2000,
-          manual: false,
-        },
-      ],
-    }
-    expect(
-      splitRows(release, reopened, release).map(
-        (row) => [row.node.id, row.took] as const
-      )
-    ).toEqual([
-      ["review", "00:00"],
-      ["smoke", "00:00"],
-      ["perf", "00:00"],
-      ["notes", "00:00"],
-    ])
-    const untimed: Run = {
-      ...reopened,
-      entries: reopened.entries.filter((entry) => entry.activityId !== "perf"),
-    }
-    expect(tookDefault(release, untimed, release)).toBe("15:00")
-  })
-
-  it("judges mid-run by the whole routine, not the page it's logged from", () => {
-    const checks = release.children[1]
-    const pausedOnNotes: Run = {
-      ...fresh,
-      runStart: 100,
-      started: true,
-      cursor: "notes",
-      passed: ["review", "smoke", "perf"],
-      entries: [
-        { id: "e0", activityId: "review", start: 100, end: 700, manual: false },
-        { id: "e1", activityId: "smoke", start: 700, end: 1000, manual: false },
-        { id: "e2", activityId: "perf", start: 1000, end: 1900, manual: false },
-        {
-          id: "e3",
-          activityId: "notes",
-          start: 1900,
-          end: 1950,
-          manual: false,
-        },
-      ],
-    }
-    expect(
-      splitRows(checks, pausedOnNotes, release).map(
-        (row) => [row.node.id, row.took] as const
-      )
-    ).toEqual([
-      ["smoke", "00:00"],
-      ["perf", "00:00"],
-    ])
-    expect(tookDefault(checks, pausedOnNotes, release)).toBe("00:00")
-
-    const checksDone: Run = {
-      ...fresh,
-      runStart: 100,
-      started: true,
-      scopeId: "checks",
-      passed: ["smoke", "perf"],
-      entries: [
-        { id: "e0", activityId: "smoke", start: 100, end: 400, manual: false },
-        { id: "e1", activityId: "perf", start: 400, end: 1300, manual: false },
-      ],
-    }
-    expect(
-      splitRows(checks, checksDone, release).map(
-        (row) => [row.node.id, row.took] as const
-      )
-    ).toEqual([
-      ["smoke", "00:00"],
-      ["perf", "00:00"],
-    ])
-  })
-
-  it("never played, counts time typed in earlier as a separate session", () => {
-    const checks = release.children[1]
-    const typedInBefore: Run = {
-      ...fresh,
-      entries: [
-        {
-          id: "e0",
-          activityId: "smoke",
-          start: 20,
-          end: 320,
-          manual: true,
-          logged: 400,
-        },
-      ],
-    }
-    expect(
-      splitRows(checks, typedInBefore, release).map(
-        (row) => [row.node.id, row.took] as const
-      )
-    ).toEqual([
-      ["smoke", "05:00"],
-      ["perf", "15:00"],
-    ])
-    expect(tookDefault(release, typedInBefore, release)).toBe("30:00")
-  })
-
-  it("never played, leaves out what was typed in and ticked done", () => {
-    const checks = release.children[1]
-    const smokeDone: Run = {
-      ...fresh,
-      done: ["smoke"],
-      entries: [
-        {
-          id: "e0",
-          activityId: "smoke",
-          start: 20,
-          end: 320,
-          manual: true,
-          logged: 400,
-        },
-      ],
-    }
-    expect(
-      splitRows(checks, smokeDone, release).map(
-        (row) => [row.node.id, row.took] as const
-      )
-    ).toEqual([
-      ["smoke", "00:00"],
-      ["perf", "15:00"],
-    ])
-    expect(tookDefault(release, smokeDone, release)).toBe("25:00")
-  })
-
-  it("has nothing to split on an activity without sub-activities", () => {
-    expect(splitRows(solo, fresh, solo)).toEqual([])
+  it("starts empty with nothing counted, not at the planned countdowns", () => {
+    expect(addTimeDraft({ seconds: 0, endedAt: null }, "UTC")).toEqual({
+      took: "00:00",
+      when: null,
+    })
   })
 })
 
-describe("tookDefault", () => {
-  it("is what the split rows add up to, under the same rule", () => {
-    expect(tookDefault(release, fresh, release)).toBe("30:00")
-    const paused: Run = {
-      ...fresh,
-      runStart: 100,
-      started: true,
-      cursor: "smoke",
-      done: ["review"],
+describe("waiting timer time", () => {
+  it("is what done activities under this one still hold from the timer", () => {
+    const run = {
       entries: [
-        { id: "e0", activityId: "review", start: 100, end: 160, manual: false },
+        {
+          id: "e0",
+          activityId: "smoke",
+          start: 100,
+          end: 130,
+          manual: false as const,
+          recording: "pending" as const,
+        },
+        {
+          id: "e1",
+          activityId: "perf",
+          start: 130,
+          end: 190,
+          manual: false as const,
+          recording: "pending" as const,
+        },
       ],
+      cursor: null,
+      passed: [],
+      done: ["smoke"],
+      canceled: [],
+      replay: [],
+      scopeId: null,
+      runStart: 0,
+      attemptFrom: {},
+      joinedAt: {},
+      started: true,
     }
-    expect(tookDefault(release, paused, release)).toBe("20:00")
-    expect(tookDefault(solo, fresh, solo)).toBe("01:30")
-    expect(tookDefault(solo, { ...fresh, canceled: ["solo"] }, solo)).toBe(
-      "00:00"
+    expect(waitingOf(release, run)).toEqual({
+      seconds: 30,
+      endedAt: parseUtc("1970-01-01T00:02:10.000Z"),
+    })
+    expect(waitingOf(solo, run).seconds).toBe(0)
+    // Canceling a group drops nothing, so a done step under it still holds its time, as
+    // saving added time on it replaces.
+    expect(waitingOf(release, { ...run, canceled: ["checks"] }).seconds).toBe(
+      30
     )
+  })
+})
+
+describe("the Add time offer", () => {
+  const earlier = { seconds: 300, endedAt: at("08:30:00") }
+  const skipped = {
+    counted: earlier,
+    from: "status" as const,
+    open: false,
+    actions: 2,
+  }
+
+  it("opened by hand, keeps this visit's count while nothing happened on the timer", () => {
+    expect(offerShown(skipped, "timer", undefined, 2)).toEqual({
+      counted: earlier,
+      from: "timer",
+      open: true,
+      actions: 2,
+    })
+    expect(offerShown(skipped, "timer", undefined, 3).counted).toBeNull()
+    expect(offerShown(null, "timer", undefined, 0).counted).toBeNull()
+  })
+
+  it("after a Done that dropped nothing, drops an earlier Done's count", () => {
+    expect(offerShown(skipped, "status", null, 2).counted).toBeNull()
+    const fresh = { seconds: 4, endedAt: at("08:40:04") }
+    expect(offerShown(skipped, "status", fresh, 2).counted).toEqual(fresh)
   })
 })
 
 describe("logPlan", () => {
-  it("logs one total on the activity itself, ending just now", () => {
-    expect(logPlan(release, fresh, release, draft, "UTC", now)).toEqual({
+  it("saves one total on the activity, ending just now", () => {
+    expect(logPlan(release, draft, "UTC", now)).toEqual({
       sessions: [
         {
           activityId: "release",
@@ -381,26 +196,18 @@ describe("logPlan", () => {
           endedAt: at("09:00:00"),
         },
       ],
-      done: ["release"],
-      groups: [],
     })
   })
 
-  it("reads When in the workspace timezone", () => {
-    const plan = logPlan(
-      release,
-      fresh,
-      release,
-      {
-        ...draft,
-        took: "1:00:00",
-        when: { date: "2026-11-10", time: "19:30" },
-        done: false,
-      },
-      "Australia/Sydney",
-      now
-    )
-    expect(plan).toEqual({
+  it("reads Ended in the workspace timezone", () => {
+    expect(
+      logPlan(
+        release,
+        { took: "1:00:00", when: { date: "2026-11-10", time: "19:30" } },
+        "Australia/Sydney",
+        now
+      )
+    ).toEqual({
       sessions: [
         {
           activityId: "release",
@@ -408,112 +215,30 @@ describe("logPlan", () => {
           endedAt: parseUtc("2026-11-10T08:30:00.000Z"),
         },
       ],
-      done: [],
-      groups: [],
     })
   })
 
-  it("splits by sub-activity, skipping the ones at zero, and ticks what was logged", () => {
-    const plan = logPlan(
-      release,
-      fresh,
-      release,
-      { ...draft, split: true, parts: { smoke: "00:00", notes: "02:00" } },
-      "UTC",
-      now
-    )
-    expect(plan).toEqual({
+  it("saves more than a day as back-to-back sessions of at most a day", () => {
+    expect(logPlan(solo, { ...draft, took: "26:00:00" }, "UTC", now)).toEqual({
       sessions: [
         {
-          activityId: "review",
-          startedAt: at("08:33:00"),
-          endedAt: at("08:43:00"),
+          activityId: "solo",
+          startedAt: parseUtc("2026-11-10T07:00:00.000Z"),
+          endedAt: parseUtc("2026-11-10T09:00:00.000Z"),
         },
         {
-          activityId: "perf",
-          startedAt: at("08:43:00"),
-          endedAt: at("08:58:00"),
-        },
-        {
-          activityId: "notes",
-          startedAt: at("08:58:00"),
-          endedAt: at("09:00:00"),
+          activityId: "solo",
+          startedAt: parseUtc("2026-11-10T09:00:00.000Z"),
+          endedAt: now,
         },
       ],
-      done: ["review", "perf", "notes", "release"],
-      groups: ["checks"],
-    })
-  })
-
-  it("never marks a canceled activity done, nor anything in a canceled group", () => {
-    const canceled = withCanceledInside(release, {
-      ...fresh,
-      canceled: ["release"],
-    })
-    expect(marksDone(release, canceled, draft)).toBe(false)
-    expect(
-      logPlan(release, canceled, release, draft, "UTC", now)
-    ).toMatchObject({
-      done: [],
-    })
-    expect(splitRows(release, canceled, release)).toEqual([])
-
-    const checks: Run = { ...fresh, canceled: ["checks"] }
-    expect(
-      splitRows(release, checks, release).map(
-        (row) => [row.node.id, row.took] as const
-      )
-    ).toEqual([
-      ["review", "10:00"],
-      ["notes", "00:00"],
-    ])
-    expect(
-      logPlan(
-        release,
-        checks,
-        release,
-        { ...draft, split: true, parts: { review: "00:00", notes: "02:00" } },
-        "UTC",
-        now
-      )
-    ).toEqual({
-      sessions: [
-        {
-          activityId: "notes",
-          startedAt: at("08:58:00"),
-          endedAt: at("09:00:00"),
-        },
-      ],
-      done: ["notes", "release"],
-      groups: [],
     })
   })
 
   it("asks for a duration when nothing was typed", () => {
-    expect(
-      logPlan(release, fresh, release, { ...draft, took: "00:00" }, "UTC", now)
-    ).toEqual({
+    expect(logPlan(release, { ...draft, took: "00:00" }, "UTC", now)).toEqual({
       error: "Type how long it took.",
     })
-    expect(
-      logPlan(
-        release,
-        fresh,
-        release,
-        {
-          ...draft,
-          split: true,
-          parts: {
-            review: "00:00",
-            smoke: "00:00",
-            perf: "00:00",
-            notes: "00:00",
-          },
-        },
-        "UTC",
-        now
-      )
-    ).toEqual({ error: "Type how long at least one of them took." })
   })
 })
 

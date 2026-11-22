@@ -1,5 +1,6 @@
-import { atom, useAtom, useSetAtom } from "jotai"
-import { CalendarClock, PenLine } from "lucide-react"
+import { useMemo } from "react"
+import { atom, useAtom, useAtomValue } from "jotai"
+import { CalendarClock, ChevronDown } from "lucide-react"
 import { toast } from "sonner"
 import {
   now,
@@ -12,37 +13,32 @@ import { Form } from "@/components/forms/Form"
 import { calendarBounds } from "@/components/forms/calendar-bounds"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import {
   Popover,
   PopoverContent,
+  PopoverTitle,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { Switch } from "@/components/ui/switch"
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { useAppForm } from "@/hooks/form"
 import { useLogTime } from "@/local-db/activity-mutations"
 import { InvalidLogError } from "@/local-db/time-entries"
-import { cn } from "@/lib/utils"
 import { valueToSeconds } from "../duration"
 import {
+  addTimeDraft,
   logPlan,
-  marksDone,
-  splitRows,
-  tookDefault,
+  offerShown,
+  waitingOf,
   whenLabel,
   whenNow,
-  type LogDraft,
+  type Counted,
+  type Offer,
   type When,
 } from "../log-time"
-import { isCanceled, type RoutineNode } from "../routine"
-import { clock } from "../routine-view"
-import type { Routine, Surface } from "../use-routine"
-import { DurationChip, DurationDigits } from "./DurationField"
-import { TypeMark } from "./TypeMark"
-
-// Keyed by activity, so moving to another activity's page closes the form.
-const logTimeOpenAtom = atom<{ id: string; surface: Surface } | null>(null)
+import type { RoutineNode } from "../routine"
+import { timerActionsAtom, type Routine } from "../use-routine"
+import { DurationChip } from "./DurationField"
 
 const chipClassName =
   "h-[30px] gap-1.5 rounded-md bg-background px-2.5 text-[13px] font-normal max-md:h-11"
@@ -58,7 +54,10 @@ function WhenField({
 }) {
   const at = parseUtc(now())
   const today = toLocalDate(at, timezone)
-  const picked = value ?? whenNow(timezone, at)
+  // A time picked by hand replaces the timer's exact stop.
+  const picked = value
+    ? { date: value.date, time: value.time }
+    : whenNow(timezone, at)
   const label = whenLabel(value, timezone, at)
   const bounds = calendarBounds()
   return (
@@ -75,6 +74,7 @@ function WhenField({
       >
         <CalendarClock data-icon="inline-start" />
         {label}
+        <ChevronDown className="text-muted-foreground" />
       </PopoverTrigger>
       <PopoverContent align="start" className="w-auto gap-2 p-2">
         <div className="flex items-center gap-2">
@@ -119,93 +119,64 @@ function WhenField({
   )
 }
 
-// One compact row per timed activity, so a long routine still fits a phone.
-function SplitRows({
-  timer,
-  node,
-  parts,
-  onChange,
-}: {
-  timer: Routine
-  node: RoutineNode
-  parts: Record<string, string>
-  onChange: (id: string, took: string) => void
-}) {
-  const rows = splitRows(node, timer.session.run, timer.routine)
-  const total = rows.reduce(
-    (sum, row) => sum + valueToSeconds(parts[row.node.id] ?? row.took),
-    0
-  )
-  return (
-    <div className="flex flex-col gap-1">
-      <ul className="flex max-h-72 flex-col overflow-y-auto rounded-lg border bg-background">
-        {rows.map((row) => {
-          const took = parts[row.node.id] ?? row.took
-          return (
-            <li
-              key={row.node.id}
-              className="flex min-h-9 items-center gap-2 border-b px-2.5 last:border-b-0 max-md:min-h-11"
-            >
-              <TypeMark type={timer.typeOf(row.node)} />
-              <span
-                dir="auto"
-                className={cn(
-                  "min-w-0 flex-1 truncate text-sm",
-                  valueToSeconds(took) === 0 && "text-muted-foreground"
-                )}
-              >
-                {row.node.title || "Untitled"}
-              </span>
-              <DurationDigits
-                value={took}
-                label={`${row.node.title} took`}
-                onChange={(next) => onChange(row.node.id, next)}
-                className="rounded px-1 text-right text-sm focus:bg-accent"
-              />
-            </li>
-          )
-        })}
-      </ul>
-      <span className="flex justify-between px-1 text-xs text-muted-foreground">
-        <span>Ones left at 00:00 aren’t logged and stay open</span>
-        <span className="tabular-nums">Total {clock(total)}</span>
-      </span>
-    </div>
-  )
+// The offer to add time belongs to one visit of the activity's page and to what opened it:
+// the Status (after Done) or the Timer row's Add time. What Done counted is kept for this
+// visit until it's saved, so Add time opened by hand starts from it too; leaving the page
+// drops it, and any timer action on its routine after it was made makes it stale.
+type OfferedFrom = "status" | "timer"
+
+const useAddTimeOffer = (routineId: string) => {
+  // Identity matters: one atom per page's Status and Timer, so its state ends with them.
+  const offerAtom = useMemo(() => atom<Offer | null>(null), [])
+  const [offer, setOffer] = useAtom(offerAtom)
+  const actions = useAtomValue(timerActionsAtom)[routineId] ?? 0
+  const current = offer !== null && offer.actions === actions
+  return {
+    open: current && offer.open,
+    // Kept after closing, so the popover leaves from where it opened.
+    from: offer?.from ?? "timer",
+    counted: current ? offer.counted : null,
+    show: (from: OfferedFrom, counted?: Counted | null) =>
+      setOffer((was) => offerShown(was, from, counted, actions)),
+    close: () => setOffer((was) => (was ? { ...was, open: false } : was)),
+    forget: () => setOffer(null),
+    saved: () =>
+      setOffer((was) => (was ? { ...was, open: false, counted: null } : was)),
+  }
 }
 
-function LogTimeForm({
+type AddTimeOffer = ReturnType<typeof useAddTimeOffer>
+
+const fieldLabel = "w-16 shrink-0 text-sm text-muted-foreground"
+
+// How long and when it ended, then Save. Right after Done, Skip leaves it done with no time;
+// opened by hand, Cancel just closes it.
+function AddTimeForm({
   timer,
   node,
+  counted,
   timezone,
+  dismiss,
+  onClose,
+  onSaved,
 }: {
   timer: Routine
   node: RoutineNode
+  counted: Counted | null
   timezone: string
+  dismiss: "Skip" | "Cancel"
+  onClose: () => void
+  onSaved: () => void
 }) {
-  const setOpen = useSetAtom(logTimeOpenAtom)
   const logTime = useLogTime(timer.workspaceId)
-  const canSplit = node.children.length > 0
-  const canceled = isCanceled(timer.session.run, node.id)
-  const defaultValues: LogDraft = {
-    split: false,
-    took: tookDefault(node, timer.session.run, timer.routine),
-    parts: {},
-    when: null,
-    done: !canceled,
-  }
   const form = useAppForm({
-    defaultValues,
+    defaultValues: addTimeDraft(
+      counted ?? waitingOf(node, timer.session.run),
+      timezone
+    ),
     validators: {
       onSubmitAsync: async ({ value }) => {
-        const plan = logPlan(
-          node,
-          timer.session.run,
-          timer.routine,
-          value,
-          timezone,
-          parseUtc(now())
-        )
+        const plan = logPlan(node, value, timezone, parseUtc(now()))
         if ("error" in plan) return { form: plan.error }
         try {
           await logTime.mutateAsync(plan)
@@ -214,19 +185,15 @@ function LogTimeForm({
             form:
               error instanceof InvalidLogError
                 ? error.message
-                : "Couldn't log the time.",
+                : "Couldn't save the time.",
           }
         }
         return null
       },
     },
-    onSubmit: ({ value }) => {
-      setOpen(null)
-      toast.success(
-        marksDone(node, timer.session.run, value)
-          ? `Logged and marked ${node.title || "it"} done`
-          : `Logged on ${node.title || "the activity"}`
-      )
+    onSubmit: () => {
+      onSaved()
+      toast.success(`Added time to ${node.title || "the activity"}`)
     },
   })
 
@@ -235,48 +202,28 @@ function LogTimeForm({
       onSubmit={() => void form.handleSubmit()}
       className="flex flex-col gap-3"
     >
-      <div className="flex flex-col gap-0.5">
-        <span className="text-sm font-medium">Log time</span>
-        <span className="text-xs text-muted-foreground">
-          For a session you did without the timer.
-        </span>
-      </div>
       <form.AppForm>
         <form.FormError />
       </form.AppForm>
-      <form.Subscribe
-        selector={(state) =>
-          [state.values.split, state.values.took, state.values.parts] as const
-        }
-      >
-        {([split, took, parts]) =>
-          split ? (
-            <SplitRows
-              timer={timer}
-              node={node}
-              parts={parts}
-              onChange={(id, next) =>
-                form.setFieldValue("parts", { ...parts, [id]: next })
-              }
+      <form.Subscribe selector={(state) => state.values.took}>
+        {(took) => (
+          <div className="flex items-center gap-2">
+            <span className={fieldLabel}>How long</span>
+            <DurationChip
+              value={took}
+              label="How long it took"
+              zeroLabel=""
+              downLabel={valueToSeconds(took) >= 3600 ? "h:min:s" : "min:s"}
+              title="How long it took"
+              onChange={(next) => form.setFieldValue("took", next)}
             />
-          ) : (
-            <div className="flex items-center gap-2 text-sm">
-              <span className="w-12 shrink-0 text-foreground/75">Took</span>
-              <DurationChip
-                value={took}
-                label="How long it took"
-                zeroLabel=""
-                title="Type how long it took over 00:00"
-                onChange={(next) => form.setFieldValue("took", next)}
-              />
-            </div>
-          )
-        }
+          </div>
+        )}
       </form.Subscribe>
       <form.Subscribe selector={(state) => state.values.when}>
         {(when) => (
-          <div className="flex items-center gap-2 text-sm">
-            <span className="w-12 shrink-0 text-foreground/75">Ended</span>
+          <div className="flex items-center gap-2">
+            <span className={fieldLabel}>Ended</span>
             <WhenField
               value={when}
               timezone={timezone}
@@ -285,53 +232,27 @@ function LogTimeForm({
           </div>
         )}
       </form.Subscribe>
-      {canSplit ? (
-        <form.Subscribe selector={(state) => state.values.split}>
-          {(split) => (
-            <label className="flex min-h-7 items-center gap-2 text-sm max-md:min-h-11">
-              <Switch
-                checked={split}
-                onCheckedChange={(next) => form.setFieldValue("split", next)}
-              />
-              Split by sub-activity
-            </label>
-          )}
-        </form.Subscribe>
-      ) : null}
-      {canceled ? null : (
-        <form.Subscribe
-          selector={(state) => [state.values.done, state.values.split] as const}
-        >
-          {([done, split]) => (
-            <label className="flex min-h-7 items-center gap-2 text-sm max-md:min-h-11">
-              <Checkbox
-                checked={done}
-                onCheckedChange={(next) => form.setFieldValue("done", next)}
-              />
-              {split
-                ? `Mark the logged ones and ${node.title || "this"} done`
-                : "Mark done"}
-            </label>
-          )}
-        </form.Subscribe>
-      )}
-      <div className="flex gap-2">
+      <div className="flex justify-end gap-2">
         <Button
           type="button"
-          variant="ghost"
-          className="h-11 flex-1 rounded-full"
-          onClick={() => setOpen(null)}
+          variant="outline"
+          className="max-md:h-11 max-md:flex-1"
+          onClick={onClose}
         >
-          Cancel
+          {dismiss}
         </Button>
-        <form.Subscribe selector={(state) => state.isSubmitting}>
-          {(isSubmitting) => (
+        <form.Subscribe
+          selector={(state) =>
+            [state.isSubmitting, valueToSeconds(state.values.took)] as const
+          }
+        >
+          {([isSubmitting, seconds]) => (
             <Button
               type="submit"
-              disabled={isSubmitting}
-              className="h-11 flex-1 rounded-full bg-foreground font-semibold text-background hover:bg-foreground/85"
+              disabled={isSubmitting || seconds === 0}
+              className="max-md:h-11 max-md:flex-1"
             >
-              Log time
+              Save
             </Button>
           )}
         </form.Subscribe>
@@ -340,41 +261,71 @@ function LogTimeForm({
   )
 }
 
-function useLogTimeOpen(activityId: string, surface: Surface) {
-  const [openFor, setOpen] = useAtom(logTimeOpenAtom)
-  return {
-    open: openFor?.id === activityId && openFor.surface === surface,
-    show: () => setOpen({ id: activityId, surface }),
-  }
-}
-
-// `compact` keeps only the icon on a phone, for the dock's single row.
-function LogTimeButton({
-  onClick,
-  compact = false,
-  className,
+// Over the page, never pushing it down: anchored to what opened it on a wide screen, a sheet
+// from the bottom on a phone.
+function AddTime({
+  timer,
+  node,
+  offer,
+  anchors,
+  timezone,
+  variant,
 }: {
-  onClick: () => void
-  compact?: boolean
-  className?: string
+  timer: Routine
+  node: RoutineNode
+  offer: AddTimeOffer
+  anchors: Record<OfferedFrom, React.RefObject<HTMLElement | null>>
+  timezone: string
+  variant: "popover" | "sheet"
 }) {
+  const form = (
+    <AddTimeForm
+      timer={timer}
+      node={node}
+      counted={offer.counted}
+      timezone={timezone}
+      dismiss={offer.from === "status" ? "Skip" : "Cancel"}
+      onClose={offer.close}
+      onSaved={offer.saved}
+    />
+  )
+  if (variant === "sheet") {
+    return (
+      <Sheet
+        open={offer.open}
+        onOpenChange={(open) => {
+          if (!open) offer.close()
+        }}
+      >
+        <SheetContent
+          side="bottom"
+          showCloseButton={false}
+          className="rounded-t-xl px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]"
+        >
+          <SheetTitle className="mb-3 text-sm font-medium">Add time</SheetTitle>
+          {form}
+        </SheetContent>
+      </Sheet>
+    )
+  }
   return (
-    <Button
-      type="button"
-      variant="outline"
-      className={cn(
-        "h-11 shrink-0 rounded-full bg-background px-4 text-sm [&_svg]:size-4",
-        compact && "max-sm:size-11 max-sm:px-0",
-        className
-      )}
-      aria-label="Log time"
-      title="Log a session you did without the timer"
-      onClick={onClick}
+    <Popover
+      open={offer.open}
+      onOpenChange={(open) => {
+        if (!open) offer.close()
+      }}
     >
-      <PenLine data-icon="inline-start" />
-      <span className={cn(compact && "max-sm:sr-only")}>Log time</span>
-    </Button>
+      <PopoverContent
+        anchor={anchors[offer.from]}
+        align="start"
+        className="w-72 gap-3 p-3"
+      >
+        <PopoverTitle>Add time</PopoverTitle>
+        {form}
+      </PopoverContent>
+    </Popover>
   )
 }
 
-export { LogTimeButton, LogTimeForm, WhenField, useLogTimeOpen }
+export { AddTime, WhenField, useAddTimeOffer }
+export type { AddTimeOffer }

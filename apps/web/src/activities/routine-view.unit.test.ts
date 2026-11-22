@@ -8,6 +8,7 @@ import {
 } from "./routine"
 import {
   actualVersusPlanned,
+  againOf,
   controlsOf,
   cuesAhead,
   dockOn,
@@ -23,6 +24,7 @@ import {
   pageViewOf,
   playOnlyHint,
   primaryOf,
+  replayOf,
   progressText,
   roughly,
   shownRoutine,
@@ -30,6 +32,8 @@ import {
   stepSuffix,
   summaryOf,
   timeNote,
+  timerEnded,
+  timerTargetId,
 } from "./routine-view"
 
 const down = (seconds: number) => ({
@@ -121,7 +125,7 @@ describe("step labels", () => {
     expect(session.current?.node.id).toBe("Changes 1")
     expect(stepInfo(session)).toEqual({ kind: "work", index: 1, count: 3 })
     expect(stepSuffix(session)).toBe(" of 3")
-    expect(nextOf(session)).toMatchObject({ label: "Done", skip: false })
+    expect(nextOf(session)).toMatchObject({ label: "Next", skip: false })
   })
 
   it("names a rest by the work it follows, and lets you skip it", () => {
@@ -164,17 +168,18 @@ describe("step labels", () => {
     expect(lapOf(session)?.hint).toBe(
       "Split song: this time becomes Lap 1, Lap 2 starts"
     )
-    expect(nextOf(session)?.label).toBe("Finish")
+    expect(nextOf(session)).toBeNull()
     expect(primaryOf(session).label).toBe("Pause")
   })
 
-  it("asks before starting a finished routine over, but replays a finished part", () => {
+  it("plays a finished routine or part again, leaving Start over to the menu", () => {
     const done = { ...emptyRun(), passed: practice.children.flatMap(leafIds) }
     const finished = sessionOf(practice, done, 0, () => "x")
-    expect(primaryOf(finished).action).toEqual({ kind: "askStartOver" })
-    expect(primaryOf({ ...finished, within: "changes" }).label).toBe(
-      "Play again"
-    )
+    expect(primaryOf(finished)).toMatchObject({
+      label: "Do again",
+      action: { kind: "playAll" },
+    })
+    expect(primaryOf({ ...finished, within: "changes" }).label).toBe("Do again")
   })
 })
 
@@ -285,6 +290,7 @@ describe("the note after an activity's time", () => {
       start: 5100,
       end: 5130,
       manual: false as const,
+      recording: "pending" as const,
     }
     expect(noteFor({ ...emptyRun(), entries: [typed(60), timed] })).toBe(
       "part logged"
@@ -298,6 +304,7 @@ describe("the note after an activity's time", () => {
       start: 5000,
       end,
       manual: false as const,
+      recording: "pending" as const,
     })
     expect(
       noteFor({ ...emptyRun(), done: ["tuning"], entries: [timed(5060)] })
@@ -322,7 +329,7 @@ describe("the note after an activity's time", () => {
 })
 
 describe("the buttons a timer offers", () => {
-  it("offers only Play again once the part played on its own is done", () => {
+  it("offers only Do again once the part played on its own is done", () => {
     const session = at(
       [
         [0, { kind: "playOnly", id: "tuning" }],
@@ -333,7 +340,7 @@ describe("the buttons a timer offers", () => {
     )
     expect(session.phase).toBe("scopeDone")
     const controls = controlsOf(session)
-    expect(controls.primary.label).toBe("Play again")
+    expect(controls.primary.label).toBe("Do again")
     expect(controls.prev).toBeNull()
     expect(controls.lap).toBeNull()
     expect(controls.next).toBeNull()
@@ -370,7 +377,7 @@ describe("the buttons a timer offers", () => {
   })
 })
 
-describe("Finish on a sub-activity's page", () => {
+describe("Next on a sub-activity's page", () => {
   const onLastChange = (within?: string) =>
     at(
       [
@@ -382,16 +389,16 @@ describe("Finish on a sub-activity's page", () => {
       within
     )
 
-  it("says Done on the page's last one while the routine carries on after it", () => {
+  it("moves on from the page's last one while the routine carries on after it", () => {
     const view = pageViewOf(onLastChange(), "changes")
     expect(view.next?.node.id).toBe("song")
-    expect(nextOf(view)?.label).toBe("Done")
+    expect(nextOf(view)?.label).toBe("Next")
   })
 
-  it("says Finish when the page's part is all that was started", () => {
+  it("offers nothing to move on to when the page's part is all that was started", () => {
     const view = pageViewOf(onLastChange("changes"), "changes")
     expect(view.next).toBeNull()
-    expect(nextOf(view)?.label).toBe("Finish")
+    expect(nextOf(view)).toBeNull()
   })
 })
 
@@ -561,6 +568,7 @@ describe("a clock with milliseconds", () => {
         start,
         end: start + 120 - 0.001,
         manual: false,
+        recording: "pending",
       },
     ],
   })
@@ -583,6 +591,7 @@ describe("a clock with milliseconds", () => {
           start,
           end: start + 60 - 0.001,
           manual: false,
+          recording: "pending",
         },
         {
           id: "t1",
@@ -590,6 +599,7 @@ describe("a clock with milliseconds", () => {
           start: start + 100,
           end: null,
           manual: false,
+          recording: "pending",
         },
       ],
     }
@@ -653,11 +663,13 @@ describe("a routine ticked done by hand before it was timed", () => {
 })
 
 describe("a part played on its own that has finished", () => {
+  // Its countdown ran out ("Timer ended") and Done moved past it.
   const finished = () =>
     at(
       [
         [0, { kind: "playOnly", id: "tuning" }],
         [1, { kind: "play" }],
+        [200, { kind: "next" }],
       ],
       200
     )
@@ -670,14 +682,15 @@ describe("a part played on its own that has finished", () => {
       node: practice.children[0],
       complete: true,
       seconds: 120,
+      recorded: 0,
     })
-    expect(controlsOf(session).primary.label).toBe("Play again")
+    expect(controlsOf(session).primary.label).toBe("Do again")
   })
 
   it("reads finished on that part's page", () => {
     const view = pageViewOf(finished(), "tuning")
     expect(view.phase).toBe("finished")
-    expect(primaryOf(view).label).toBe("Play again")
+    expect(primaryOf(view).label).toBe("Do again")
   })
 })
 
@@ -694,7 +707,7 @@ describe("leaving full screen", () => {
   })
 })
 
-describe("Done on the activity playing", () => {
+describe("Next on the activity playing", () => {
   const runFor = (steps: [number, Action][]) => {
     let next = 0
     const newId = () => `id-${(next += 1)}`
@@ -705,20 +718,21 @@ describe("Done on the activity playing", () => {
     )
   }
 
-  it("ticks an activity you wrote, then moves on", () => {
+  it("moves past an activity you wrote without marking it done", () => {
     const tuning = at([[0, { kind: "playAll" }]], 30)
-    const done = nextOf(tuning)
-    expect(done).toMatchObject({
-      label: "Done",
-      hint: "Mark tuning done (saved as 0:30 of 2:00) and start Changes 1",
-      action: { kind: "toggleDone", id: "tuning", from: "tuning" },
+    const next = nextOf(tuning)
+    expect(next).toMatchObject({
+      label: "Next",
+      hint: "Leave tuning (keeps 0:30 of 2:00) and start Changes 1",
+      action: { kind: "next", from: "tuning" },
     })
-    if (!done) throw new Error("Expected Done")
+    if (!next) throw new Error("Expected Next")
     const run = runFor([
       [0, { kind: "playAll" }],
-      [30, done.action],
+      [30, next.action],
     ])
-    expect(run.done).toContain("tuning")
+    expect(run.done).not.toContain("tuning")
+    expect(run.passed).toContain("tuning")
     const after = sessionOf(practice, run, 31, () => "x")
     expect(after.phase).toBe("running")
     expect(after.current?.node.id).toBe("Changes 1")
@@ -831,11 +845,10 @@ describe("Start over from a sub-activity's page", () => {
     expect(offersStartOver(songPage)).toBe(true)
   })
 
-  it("isn't offered twice where the main button already starts over", () => {
+  it("is offered on a finished routine, since the main button only plays it again", () => {
     const done = { ...emptyRun(), passed: practice.children.flatMap(leafIds) }
     const finished = sessionOf(practice, done, 0, () => "x")
-    expect(primaryOf(finished).action).toEqual({ kind: "askStartOver" })
-    expect(offersStartOver(finished)).toBe(false)
+    expect(offersStartOver(finished)).toBe(true)
   })
 })
 
@@ -859,12 +872,12 @@ describe("where the dock shows", () => {
     expect(dockOn(shown)).toBe("nowhere")
   })
 
-  it("on a phone while it plays on its own page, and everywhere else off it", () => {
+  it("nowhere while it plays on its own page, where its row holds it, and everywhere else", () => {
     const running = played(review, [[0, { kind: "playAll" }]], 5)
     const own = shownRoutine(running, "review", running)
     const elsewhere = shownRoutine(null, null, running)
     if (!own || !elsewhere) throw new Error("Expected the routine shown")
-    expect(dockOn(own)).toBe("phone")
+    expect(dockOn(own)).toBe("nowhere")
     expect(dockOn(elsewhere)).toBe("everywhere")
   })
 })
@@ -990,5 +1003,99 @@ describe("the message when an action fails", () => {
       "Couldn't update that activity."
     )
     expect(failureOf({ kind: "pause" })).toBe("Couldn't update the timer.")
+  })
+})
+
+describe("the timer row's rules", () => {
+  const scopeDone = () =>
+    at(
+      [
+        [0, { kind: "playOnly", id: "tuning" }],
+        [1, { kind: "play" }],
+        [200, { kind: "next" }],
+      ],
+      200
+    )
+
+  it("plays a finished routine from the top and a finished part on its own again", () => {
+    const done = { ...emptyRun(), passed: practice.children.flatMap(leafIds) }
+    const finished = sessionOf(practice, done, 0, () => "x")
+    expect(againOf(finished)).toEqual({ kind: "playAll" })
+    expect(scopeDone().phase).toBe("scopeDone")
+    expect(againOf(scopeDone())).toEqual({ kind: "play" })
+  })
+
+  it("plays a done routine again whole from its own page, a part from the part's page", () => {
+    const part = scopeDone()
+    const routineDone = { ...part, run: { ...part.run, done: ["practice"] } }
+    expect(replayOf(routineDone, "practice")).toEqual({ kind: "playAll" })
+    expect(replayOf(scopeDone(), "practice")).toEqual({ kind: "play" })
+    expect(replayOf(scopeDone(), "tuning")).toEqual({ kind: "play" })
+    const canceled = sessionOf(
+      practice,
+      { ...emptyRun(), canceled: practice.children.flatMap(leafIds) },
+      0,
+      () => "x"
+    )
+    expect(replayOf(canceled, "practice")).toBeNull()
+    const partCanceled = sessionOf(
+      practice,
+      { ...part.run, canceled: ["tuning"], done: ["practice"] },
+      part.now,
+      () => "x"
+    )
+    expect(replayOf(partCanceled, "practice")).toEqual({ kind: "playAll" })
+  })
+
+  it("offers nothing to play again when every activity is canceled", () => {
+    const canceled = {
+      ...emptyRun(),
+      canceled: practice.children.flatMap(leafIds),
+    }
+    const finished = sessionOf(practice, canceled, 0, () => "x")
+    expect(againOf(finished)).toBeNull()
+    expect(primaryOf(finished).disabled).toBe(true)
+  })
+
+  it("offers nothing to play again when the part played on its own is all canceled", () => {
+    const part = scopeDone()
+    const canceled = sessionOf(
+      practice,
+      { ...part.run, canceled: ["tuning"] },
+      part.now,
+      () => "x"
+    )
+    expect(canceled.phase).toBe("scopeDone")
+    expect(againOf(canceled)).toBeNull()
+  })
+
+  it("offers Start over once played, not before", () => {
+    expect(offersStartOver(at([], 0))).toBe(false)
+    expect(offersStartOver(scopeDone())).toBe(true)
+  })
+
+  it("stops at Timer ended on the last countdown, and only there", () => {
+    const tea = node("tea", down(60))
+    const ended = played(tea, [[0, { kind: "playAll" }]], 90)
+    expect(ended.phase).toBe("paused")
+    expect(timerEnded(ended)).toBe(true)
+    const midway = at([[0, { kind: "playAll" }]], 130)
+    expect(midway.current?.node.id).toBe("Changes 1")
+    expect(timerEnded(midway)).toBe(false)
+  })
+
+  it("belongs to the page it's seen from, else the part playing on its own, else the routine", () => {
+    const running = at([[0, { kind: "playAll" }]], 5)
+    expect(timerTargetId(running)).toBe("practice")
+    expect(timerTargetId(pageViewOf(running, "changes"))).toBe("changes")
+    expect(timerTargetId(scopeDone())).toBe("tuning")
+    const done = {
+      ...emptyRun(),
+      scopeId: "song",
+      passed: practice.children.flatMap(leafIds),
+    }
+    expect(timerTargetId(sessionOf(practice, done, 0, () => "x"))).toBe(
+      "practice"
+    )
   })
 })

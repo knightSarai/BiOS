@@ -381,60 +381,44 @@ class ActivitiesRepository {
     return created
   }
 
-  // "Done" ticks what was logged in the same write, so neither lands without the other. A
-  // group in between is ticked once everything in it is closed, dated by what was logged in it.
-  logTime(sessions: LoggedSession[], done: string[], groups: string[] = []) {
+  // Time added by hand after an activity is done; it never changes a status. It replaces
+  // timer time still waiting on done activities at or under it (a step that ticked itself),
+  // which Add time offers, so the same stretch is never counted twice. An activity still
+  // open keeps its clock.
+  logTime(sessions: LoggedSession[]) {
     return this.withTimeEntries(async () => {
       const rows = await new TimeEntriesRepository(this.db, this.ctx).log(
         sessions
       )
-      for (const id of done) {
-        if ((await this.byId(id))?.status === "canceled") continue
-        const own = sessions.filter((session) => session.activityId === id)
-        await this.routines().setStatus(
-          id,
-          "done",
-          latestEnd(own.length > 0 ? own : sessions)
-        )
-      }
-      for (const id of groups) {
-        if ((await this.byId(id))?.status === "canceled") continue
-        const inside = await this.leafIds(id)
-        if (!(await this.allClosed(id))) continue
-        const own = sessions.filter((session) =>
-          inside.includes(session.activityId)
-        )
-        await this.routines().setStatus(
-          id,
-          "done",
-          latestEnd(own.length > 0 ? own : sessions)
-        )
-      }
+      const subtree = await this.subtreeIds([
+        ...new Set(sessions.map((session) => session.activityId)),
+      ])
+      const ids = (await this.db.activities.bulkGet(subtree)).flatMap((row) =>
+        row?.status === "done" ? [row.id] : []
+      )
+      await this.db.timeEntries
+        .where("[workspaceId+activityId]")
+        .anyOf(ids.map((id) => [this.ctx.workspaceId, id]))
+        .modify((entry) => {
+          if (
+            entry.source === "timer" &&
+            entry.recording === "pending" &&
+            entry.endedAt !== null
+          ) {
+            entry.recording = "discarded"
+          }
+        })
       return rows
     })
   }
 
-  private async leafIds(id: string): Promise<string[]> {
-    const children = await this.children(id)
-    if (children.length === 0) return [id]
-    const nested = await Promise.all(
-      children.map((child) => this.leafIds(child.id))
+  private async subtreeIds(ids: string[]): Promise<string[]> {
+    const below = await Promise.all(
+      ids.map(async (id) =>
+        this.subtreeIds((await this.children(id)).map((child) => child.id))
+      )
     )
-    return nested.flat()
-  }
-
-  // A canceled group closes what's inside it, whatever their own status says.
-  private async allClosed(id: string): Promise<boolean> {
-    const children = await this.children(id)
-    if (children.length === 0) {
-      const row = await this.byId(id)
-      return row !== null && !isOpenStatus(row.status)
-    }
-    for (const child of children) {
-      if (child.status === "canceled") continue
-      if (!(await this.allClosed(child.id))) return false
-    }
-    return true
+    return [...ids, ...below.flat()]
   }
 
   async seedContents(

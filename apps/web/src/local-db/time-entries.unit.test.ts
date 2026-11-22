@@ -111,27 +111,7 @@ describe("TimeEntriesRepository", () => {
     }
     const plan = logPlan(
       node,
-      {
-        entries: [],
-        cursor: null,
-        passed: [],
-        done: [],
-        canceled: [],
-        replay: [],
-        scopeId: null,
-        runStart: 0,
-        attemptFrom: {},
-        joinedAt: {},
-        started: false,
-      },
-      node,
-      {
-        split: false,
-        took: "30:00",
-        parts: {},
-        when: { date: "2026-11-11", time: "21:00" },
-        done: false,
-      },
+      { took: "30:00", when: { date: "2026-11-11", time: "21:00" } },
       "Australia/Sydney",
       parseUtc("2026-11-11T09:00:00.000Z")
     )

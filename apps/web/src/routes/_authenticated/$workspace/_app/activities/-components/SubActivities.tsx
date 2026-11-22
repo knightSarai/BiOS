@@ -222,12 +222,9 @@ function SubActivityRows({
                     ? `Reopen ${child.key}`
                     : `Mark ${child.key} as done`
                 }
-                // Through the routine, so ticking the one that's running hands over to the next.
-                onCheckedChange={() =>
-                  timer
-                    ? timer.act({ kind: "toggleDone", id: child.id })
-                    : toggleDone.mutate(child.id)
-                }
+                // Ticking the one that's running still hands over to the next, and its waiting
+                // time is settled like any other Done.
+                onCheckedChange={() => toggleDone.mutate(child.id)}
               />
               <Link
                 to="/$workspace/activities/$activityId"

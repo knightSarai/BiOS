@@ -2,12 +2,11 @@ import "fake-indexeddb/auto"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { parseUtc } from "@knight-os/server/core"
 import { faceOf, findNode, loggedSeconds } from "@/activities/routine"
-import { logPlan } from "@/activities/log-time"
 import { primaryOf } from "@/activities/routine-view"
 import { ActivitiesRepository } from "./activities"
 import { ActivityTypesRepository } from "./activity-types"
 import { AreasRepository } from "./areas"
-import { createLocalDb, type LocalDb } from "./db"
+import { createLocalDb, type LocalDb, type TimeEntryRow } from "./db"
 import { RoutinesRepository } from "./routines"
 import { TimeEntriesRepository } from "./time-entries"
 
@@ -508,24 +507,8 @@ describe("RoutinesRepository", () => {
     expect(primaryOf(session).label).toBe("Do again")
   })
 
-  it("dates Mark done and a created-done activity when the logged time ended", async () => {
+  it("dates a created-done activity when its logged time ended", async () => {
     const { activities } = await setup()
-    const ended = parseUtc("2026-11-11T08:30:00.000Z")
-    await activities.logTime(
-      [
-        {
-          activityId: "standup",
-          startedAt: parseUtc("2026-11-11T08:25:00.000Z"),
-          endedAt: ended,
-        },
-      ],
-      ["standup"]
-    )
-    expect(await activities.byId("standup")).toMatchObject({
-      status: "done",
-      completedAt: ended,
-    })
-
     const areaId = (await activities.byId("standup"))?.areaId ?? ""
     await activities.createMany(
       [{ id: "retro", areaId, title: "Retro", status: "done", origin: null }],
@@ -629,33 +612,6 @@ describe("RoutinesRepository", () => {
     ])
     expect(await entries.running()).toBeUndefined()
     expect((await routines.session("standup"))?.current?.node.id).toBe("update")
-  })
-
-  it("Log time with Mark done on the paused step, then Resume, plays the next one", async () => {
-    const { routines, entries, activities } = await setup()
-    await routines.apply("release", { kind: "playAll" })
-    later(30)
-    await routines.apply("release", { kind: "pause" })
-    later(60)
-    await activities.logTime(
-      [
-        {
-          activityId: "review",
-          startedAt: parseUtc("2026-11-11T09:00:30.000Z"),
-          endedAt: parseUtc("2026-11-11T09:01:30.000Z"),
-        },
-      ],
-      ["review"]
-    )
-
-    const resumed = await routines.apply("release", { kind: "play" })
-
-    expect(resumed.current?.node.id).toBe("round1")
-    expect((await entries.running())?.activityId).toBe("round1")
-    expect((await activities.byId("review"))?.status).toBe("done")
-    expect(
-      (await entries.list("review")).filter((e) => e.source === "timer")
-    ).toHaveLength(1)
   })
 
   it("Done from the status menu on the running activity stops it and hands over", async () => {
@@ -897,14 +853,16 @@ describe("undoing a delete under the activity playing on its own", () => {
 describe("a timer left running with no cursor stored", () => {
   it("is where the routine is, and the next sync stores it", async () => {
     const { db, routines } = await setup()
-    await db.timeEntries.add({
+    const upgraded: TimeEntryRow = {
       id: "upgraded",
       workspaceId: "ws-1",
       activityId: "round2",
       startedAt: parseUtc("2026-11-11T08:59:30.000Z"),
       endedAt: null,
       source: "timer",
-    })
+      recording: "pending",
+    }
+    await db.timeEntries.add(upgraded)
 
     const session = await routines.session("release")
     expect(session?.phase).toBe("running")
@@ -921,7 +879,8 @@ describe("canceled activities", () => {
     await routines.apply("drill", { kind: "playAll" })
     later(70)
 
-    const finished = await routines.apply("drill", { kind: "sync" })
+    await routines.apply("drill", { kind: "sync" })
+    const finished = await routines.apply("drill", { kind: "next" })
     expect(finished.phase).toBe("finished")
     await routines.apply("drill", { kind: "startOver" })
 
@@ -990,7 +949,8 @@ describe("canceled activities", () => {
     await activities.setStatus("practice", "canceled")
     await routines.apply("drill", { kind: "playAll" })
     later(70)
-    expect((await routines.apply("drill", { kind: "sync" })).phase).toBe(
+    await routines.apply("drill", { kind: "sync" })
+    expect((await routines.apply("drill", { kind: "next" })).phase).toBe(
       "finished"
     )
 
@@ -1389,7 +1349,7 @@ describe("shortening a countdown below the time it has run", () => {
   })
 })
 
-describe("Mark done on an activity already done", () => {
+describe("Done or added time on an activity already done", () => {
   it("keeps the date it was done", async () => {
     const { routines, activities } = await setup()
     await routines.setStatus(
@@ -1399,16 +1359,14 @@ describe("Mark done on an activity already done", () => {
     )
     later(60)
 
-    await activities.logTime(
-      [
-        {
-          activityId: "standup",
-          startedAt: parseUtc("2026-11-11T08:50:00.000Z"),
-          endedAt: parseUtc("2026-11-11T08:55:00.000Z"),
-        },
-      ],
-      ["standup"]
-    )
+    await activities.setStatus("standup", "done")
+    await activities.logTime([
+      {
+        activityId: "standup",
+        startedAt: parseUtc("2026-11-11T08:50:00.000Z"),
+        endedAt: parseUtc("2026-11-11T08:55:00.000Z"),
+      },
+    ])
 
     expect(await activities.byId("standup")).toMatchObject({
       status: "done",
@@ -1448,91 +1406,6 @@ describe("a series made from a typed activity", () => {
     ])
 
     expect((await routines.session("set"))?.root.timer.sound).toBe("chime")
-  })
-})
-
-describe("Mark done after logging split by sub-activity", () => {
-  it("ticks the groups in between once everything in them is closed", async () => {
-    const { routines, activities } = await setup()
-    const session = await routines.session("release")
-    if (!session) throw new Error("Expected the routine")
-    const draft = {
-      split: true,
-      took: "00:00",
-      parts: { review: "10:00", round1: "01:00", round2: "01:00" },
-      when: null,
-      done: true,
-    }
-    const plan = logPlan(
-      session.root,
-      session.run,
-      session.root,
-      draft,
-      "UTC",
-      parseUtc("2026-11-11T09:00:00.000Z")
-    )
-    if ("error" in plan) throw new Error(plan.error)
-
-    await activities.logTime(plan.sessions, plan.done, plan.groups)
-
-    expect(await activities.byId("focus")).toMatchObject({
-      status: "done",
-      completedAt: "2026-11-11T09:00:00.000Z",
-    })
-    expect((await activities.byId("release"))?.status).toBe("done")
-  })
-
-  it("keeps a canceled one canceled, and splits only what's left open", async () => {
-    const { routines, activities } = await setup()
-    await routines.apply("release", { kind: "playAll" })
-    later(30)
-    await routines.apply("release", { kind: "next" })
-    await routines.apply("release", { kind: "pause" })
-    await activities.setStatus("round2", "canceled")
-    const session = await routines.session("release")
-    if (!session) throw new Error("Expected the routine")
-    const plan = logPlan(
-      session.root,
-      session.run,
-      session.root,
-      { split: true, took: "00:00", parts: {}, when: null, done: true },
-      "UTC",
-      parseUtc("2026-11-11T09:00:30.000Z")
-    )
-    if ("error" in plan) throw new Error(plan.error)
-    expect(plan.sessions.map((each) => each.activityId)).toEqual(["round1"])
-
-    await activities.logTime(plan.sessions, [...plan.done, "round2"])
-
-    expect((await activities.byId("round2"))?.status).toBe("canceled")
-    expect((await activities.byId("round1"))?.status).toBe("done")
-    expect((await activities.byId("review"))?.status).toBe("todo")
-  })
-
-  it("leaves a group open while something in it is", async () => {
-    const { routines, activities } = await setup()
-    const session = await routines.session("release")
-    if (!session) throw new Error("Expected the routine")
-    const plan = logPlan(
-      session.root,
-      session.run,
-      session.root,
-      {
-        split: true,
-        took: "00:00",
-        parts: { review: "10:00", round1: "01:00", round2: "00:00" },
-        when: null,
-        done: true,
-      },
-      "UTC",
-      parseUtc("2026-11-11T09:00:00.000Z")
-    )
-    if ("error" in plan) throw new Error(plan.error)
-
-    await activities.logTime(plan.sessions, plan.done, plan.groups)
-
-    expect((await activities.byId("focus"))?.status).toBe("todo")
-    expect((await activities.byId("round2"))?.status).toBe("todo")
   })
 })
 

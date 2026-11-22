@@ -54,6 +54,7 @@ type RoutineRequest = {
   activityId: string
   action: Action | { kind: "sync" }
   within?: string | null
+  reopen?: string | null
 }
 
 const currentSeconds = () => toSeconds(parseUtc(now()))
@@ -70,12 +71,13 @@ const silences = (action: RoutineRequest["action"]) =>
 const applyRoutine = async (
   queryClient: QueryClient,
   workspaceId: string,
-  { activityId, action, within = null }: RoutineRequest
+  { activityId, action, within = null, reopen = null }: RoutineRequest
 ) => {
   const session = await routinesRepository(workspaceId).apply(
     activityId,
     action,
-    within
+    within,
+    reopen
   )
   armRoutine({
     workspaceId,
@@ -380,15 +382,8 @@ const useLogTime = (workspaceId: string) => {
   const invalidate = useInvalidateAndRearm(workspaceId)
   return useMutation({
     networkMode: "always",
-    mutationFn: ({
-      sessions,
-      done,
-      groups,
-    }: {
-      sessions: LoggedSession[]
-      done: string[]
-      groups: string[]
-    }) => activitiesRepository(workspaceId).logTime(sessions, done, groups),
+    mutationFn: ({ sessions }: { sessions: LoggedSession[] }) =>
+      activitiesRepository(workspaceId).logTime(sessions),
     onSuccess: invalidate,
   })
 }

@@ -58,8 +58,10 @@ type Workspace = {
 const propertyButtonClassName =
   "flex min-h-8 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-accent"
 
-const chipClassName =
-  "relative flex h-8 items-center gap-2 rounded-md bg-muted px-2.5 hover:bg-accent max-md:after:absolute max-md:after:inset-x-0 max-md:after:-inset-y-1.5"
+const inlinePropertyButtonClassName =
+  "flex min-h-11 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left hover:bg-accent"
+
+const createdClassName = "flex min-h-8 items-center px-2 text-muted-foreground"
 
 function Property({
   label,
@@ -333,7 +335,11 @@ function StatusAndTimer({
   activity,
   workspace,
   addTime,
-}: ActivityPropertiesProps & { addTime: "popover" | "sheet" }) {
+  buttonClassName,
+}: ActivityPropertiesProps & {
+  addTime: "popover" | "sheet"
+  buttonClassName: string
+}) {
   const { data: state } = useQuery(routineQuery(workspace.id, activity.id))
   const global = useRoutineSession(state)
   const { type } = useActivityType(activity, workspace.id)
@@ -349,7 +355,7 @@ function StatusAndTimer({
           status={status}
           offer={offer}
           buttonRef={statusRef}
-          className={propertyButtonClassName}
+          className={buttonClassName}
         />
       </Property>
       {global ? (
@@ -417,12 +423,13 @@ function ActivityProperties({ activity, workspace }: ActivityPropertiesProps) {
         activity={activity}
         workspace={workspace}
         addTime="popover"
+        buttonClassName={propertyButtonClassName}
       />
       <Property label="Created">
         <CreatedAt
           activity={activity}
           workspace={workspace}
-          className="flex min-h-8 items-center px-2 text-muted-foreground"
+          className={createdClassName}
         />
       </Property>
       <Property label="Type">
@@ -475,55 +482,62 @@ function ActivityProperties({ activity, workspace }: ActivityPropertiesProps) {
   )
 }
 
-function ActivityPropertyChips({
-  activity,
-  workspace,
-}: ActivityPropertiesProps) {
+// No "Written in" row: below lg, ActivityOriginLink shows it above the title.
+function ActivityPropertyRows({ activity, workspace }: ActivityPropertiesProps) {
   const key = useActivityKey(activity, workspace)
   return (
-    <div className="mb-6 flex flex-col gap-3 text-sm">
-      <div className="flex flex-col gap-1">
-        <StatusAndTimer
-          key={activity.id}
-          activity={activity}
-          workspace={workspace}
-          addTime="sheet"
-        />
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="-mx-2 mb-6 flex flex-col text-sm *:min-h-11">
+      <StatusAndTimer
+        key={activity.id}
+        activity={activity}
+        workspace={workspace}
+        addTime="sheet"
+        buttonClassName={inlinePropertyButtonClassName}
+      />
+      <Property label="Created">
         <CreatedAt
           activity={activity}
           workspace={workspace}
-          className="px-1 text-muted-foreground"
+          className={createdClassName}
         />
+      </Property>
+      <Property label="Type">
         <TypeControl
           activity={activity}
           activityKey={key}
           workspace={workspace}
-          className={chipClassName}
+          className={inlinePropertyButtonClassName}
         />
+      </Property>
+      <Property label="Area">
         <AreaControl
           activity={activity}
           workspace={workspace}
-          className={chipClassName}
+          className={inlinePropertyButtonClassName}
         />
+      </Property>
+      <Property label="Goal">
         <GoalControl
           activity={activity}
           workspace={workspace}
-          className={chipClassName}
+          className={inlinePropertyButtonClassName}
         />
+      </Property>
+      <Property label="Parent">
         <ParentControl
           activity={activity}
           activityKey={key}
           workspace={workspace}
-          className={chipClassName}
+          className={inlinePropertyButtonClassName}
         />
+      </Property>
+      <Property label="Due">
         <DueDateControl
           activity={activity}
           workspace={workspace}
-          className={chipClassName}
+          className={inlinePropertyButtonClassName}
         />
-      </div>
+      </Property>
     </div>
   )
 }
@@ -539,4 +553,4 @@ function ActivityOriginLink({ activity, workspace }: ActivityPropertiesProps) {
   )
 }
 
-export { ActivityOriginLink, ActivityProperties, ActivityPropertyChips }
+export { ActivityOriginLink, ActivityProperties, ActivityPropertyRows }

@@ -24,7 +24,7 @@ import { Page } from "@layout/content/Page"
 import {
   ActivityOriginLink,
   ActivityProperties,
-  ActivityPropertyChips,
+  ActivityPropertyRows,
 } from "./-components/ActivityProperties"
 import {
   ActivityFields,
@@ -137,7 +137,7 @@ function ActivityPage() {
                     />
                   ) : null}
                   <div className="lg:hidden">
-                    <ActivityPropertyChips
+                    <ActivityPropertyRows
                       activity={activity}
                       workspace={propertiesWorkspace}
                     />

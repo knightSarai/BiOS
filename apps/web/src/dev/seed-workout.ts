@@ -28,6 +28,7 @@ import { getLocalDb, type TimeEntryRow } from "@/local-db/db"
 import { GoalsRepository } from "@/local-db/goals"
 import type { DailyNoteFormat } from "@/journal/daily-note"
 import { notebookContext } from "@/local-db/notebook-queries"
+import { iconValue } from "@/notebook/stored-icon"
 import { contentWritesSettled } from "@/local-db/y-content"
 import { ensureDailyNote } from "@/notebook/use-cases"
 
@@ -762,6 +763,7 @@ const seedWorkout = async () => {
   // A subtype also answers to its parent's field keys, since it inherits those fields.
   const makeType = async (
     name: string,
+    icon: string,
     color: "chart-1" | "chart-2" | "chart-3" | "chart-4" | "chart-5",
     timer: TimerConfig,
     fields: {
@@ -773,7 +775,7 @@ const seedWorkout = async () => {
     parent?: MadeType
   ): Promise<MadeType> => {
     const type = await types.create({ name, color, parentId: parent?.id })
-    await types.update(type.id, { timer })
+    await types.update(type.id, { timer, icon })
     const ids: Record<string, string> = { ...parent?.ids }
     const options: Record<string, Record<string, string>> = {
       ...parent?.options,
@@ -801,6 +803,7 @@ const seedWorkout = async () => {
   ]
   const workout = await makeType(
     "Workout",
+    iconValue("heartbeat", "neutral"),
     "chart-1",
     { mode: "up", sound: "none" },
     sessionFields
@@ -808,6 +811,7 @@ const seedWorkout = async () => {
   const typeIds = {
     boxing: await makeType(
       "Boxing",
+      iconValue("boxing-glove", "neutral"),
       "chart-1",
       { mode: "up", sound: "bell" },
       [],
@@ -815,6 +819,7 @@ const seedWorkout = async () => {
     ),
     strength: await makeType(
       "Strength",
+      iconValue("barbell", "neutral"),
       "chart-2",
       { mode: "up", sound: "none" },
       [],
@@ -822,6 +827,7 @@ const seedWorkout = async () => {
     ),
     round: await makeType(
       "Round",
+      iconValue("timer", "neutral"),
       "chart-3",
       { mode: "down", seconds: 300, sound: "bell" },
       [
@@ -843,12 +849,14 @@ const seedWorkout = async () => {
     ),
     exercise: await makeType(
       "Exercise",
+      "🏋️",
       "chart-4",
       { mode: "up", sound: "none" },
       []
     ),
     set: await makeType(
       "Set",
+      iconValue("repeat", "neutral"),
       "chart-5",
       { mode: "down", seconds: 90, sound: "beep" },
       [

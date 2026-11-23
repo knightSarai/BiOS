@@ -134,13 +134,13 @@ function EmojiGrid({
 function IconGrid({
   label,
   icons,
-  color,
+  glyphClassName,
   selected,
   onPick,
 }: {
   label: string
   icons: CatalogIcon[]
-  color: IconColor
+  glyphClassName: string
   selected: string | null
   onPick: (name: string) => void
 }) {
@@ -166,7 +166,7 @@ function IconGrid({
             >
               <IconGlyph
                 paths={paths}
-                className={cn("size-4", ICON_COLORS[color].text)}
+                className={cn("size-4", glyphClassName)}
               />
             </button>
           )
@@ -276,21 +276,26 @@ function DefaultFileIcon({
 function IconsPanel({
   current,
   offerDefault,
+  tintClassName,
   onPick,
 }: {
   current: StoredIcon | null
   offerDefault: boolean
+  tintClassName: string | null
   onPick: (value: string) => void
 }) {
   const [query, setQuery] = useAtom(iconQueryAtom)
-  const color = useAtomValue(iconColorAtom)
+  const chosenColor = useAtomValue(iconColorAtom)
+  // A tinted picker's icons take their colour from the owner, so the stored colour stays neutral.
+  const color = tintClassName === null ? chosenColor : DEFAULT_ICON_COLOR
+  const glyphClassName = tintClassName ?? ICON_COLORS[color].text
   const results = searchIcons(query)
   const pick = (name: string) => onPick(iconValue(name, color))
   const selected = current?.kind === "icon" ? current.name : null
 
   return (
     <>
-      <ColorSwatches />
+      {tintClassName === null ? <ColorSwatches /> : null}
       <SearchField
         label="Search icons"
         value={query}
@@ -306,7 +311,7 @@ function IconsPanel({
             <IconGrid
               label="Results"
               icons={results}
-              color={color}
+              glyphClassName={glyphClassName}
               selected={selected}
               onPick={pick}
             />
@@ -326,7 +331,7 @@ function IconsPanel({
                 key={group.name}
                 label={group.name}
                 icons={group.icons}
-                color={color}
+                glyphClassName={glyphClassName}
                 selected={selected}
                 onPick={pick}
               />
@@ -408,11 +413,72 @@ function EmojisPanel({
   )
 }
 
+const resetIconChooserAtom = atom(null, (_get, set) => {
+  set(pickerTabAtom, null)
+  set(emojiQueryAtom, "")
+  set(iconQueryAtom, "")
+})
+
+// `tintClassName` colours every icon for an owner that sets the colour itself, and hides the swatches.
+function IconChooser({
+  value,
+  removeTo,
+  offerDefault,
+  tintClassName,
+  onChoose,
+}: {
+  value: string | null
+  removeTo: string | null
+  offerDefault: boolean
+  tintClassName: string | null
+  onChoose: (icon: string | null) => void
+}) {
+  const [tab, setTab] = useAtom(pickerTabAtom)
+  const current = value ? parseStoredIcon(value) : null
+
+  return (
+    <Tabs
+      value={tab ?? (current?.kind === "emoji" ? "emojis" : "icons")}
+      onValueChange={(next) => setTab(next === "emojis" ? "emojis" : "icons")}
+      className="gap-0"
+    >
+      <div className="flex items-center justify-between border-b px-2.5 pt-0.5">
+        <TabsList variant="line" className="gap-3 p-0">
+          <TabsTrigger value="icons" className="px-0 py-1.5">
+            Icons
+          </TabsTrigger>
+          <TabsTrigger value="emojis" className="px-0 py-1.5">
+            Emojis
+          </TabsTrigger>
+        </TabsList>
+        {hasCustomIcon(value) ? (
+          <button
+            type="button"
+            onClick={() => onChoose(removeTo)}
+            className="rounded-md px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            Remove
+          </button>
+        ) : null}
+      </div>
+      <TabsContent value="icons">
+        <IconsPanel
+          current={current}
+          offerDefault={offerDefault}
+          tintClassName={tintClassName}
+          onPick={onChoose}
+        />
+      </TabsContent>
+      <TabsContent value="emojis">
+        <EmojisPanel current={current} onPick={onChoose} />
+      </TabsContent>
+    </Tabs>
+  )
+}
+
 function IconPicker({ workspace }: { workspace: NotebookWorkspace }) {
   const [picking, setPicking] = useAtom(iconPickerAtom)
-  const [tab, setTab] = useAtom(pickerTabAtom)
-  const setEmojiQuery = useSetAtom(emojiQueryAtom)
-  const setIconQuery = useSetAtom(iconQueryAtom)
+  const resetChooser = useSetAtom(resetIconChooserAtom)
   const setDocumentIcon = useSetDocumentIcon(workspace.id)
   const setGoalIcon = useSetGoalIcon(workspace.id)
   const target = picking?.target ?? null
@@ -428,12 +494,9 @@ function IconPicker({ workspace }: { workspace: NotebookWorkspace }) {
   }).data
   const currentValue =
     (target?.kind === "goal" ? goalIcon : documentIcon) ?? null
-  const current = currentValue ? parseStoredIcon(currentValue) : null
   const close = () => {
     setPicking(null)
-    setTab(null)
-    setEmojiQuery("")
-    setIconQuery("")
+    resetChooser()
   }
 
   const choose = (icon: string | null) => {
@@ -454,50 +517,16 @@ function IconPicker({ workspace }: { workspace: NotebookWorkspace }) {
         className="w-72 gap-0 p-0"
         aria-label="Choose an icon"
       >
-        <Tabs
-          value={tab ?? (current?.kind === "emoji" ? "emojis" : "icons")}
-          onValueChange={(value) =>
-            setTab(value === "emojis" ? "emojis" : "icons")
-          }
-          className="gap-0"
-        >
-          <div className="flex items-center justify-between border-b px-2.5 pt-0.5">
-            <TabsList variant="line" className="gap-3 p-0">
-              <TabsTrigger value="icons" className="px-0 py-1.5">
-                Icons
-              </TabsTrigger>
-              <TabsTrigger value="emojis" className="px-0 py-1.5">
-                Emojis
-              </TabsTrigger>
-            </TabsList>
-            {hasCustomIcon(currentValue) ? (
-              <button
-                type="button"
-                onClick={() =>
-                  choose(
-                    target?.kind === "document" ? DEFAULT_DOCUMENT_ICON : null
-                  )
-                }
-                className="rounded-md px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
-              >
-                Remove
-              </button>
-            ) : null}
-          </div>
-          <TabsContent value="icons">
-            <IconsPanel
-              current={current}
-              offerDefault={target?.kind === "document"}
-              onPick={choose}
-            />
-          </TabsContent>
-          <TabsContent value="emojis">
-            <EmojisPanel current={current} onPick={choose} />
-          </TabsContent>
-        </Tabs>
+        <IconChooser
+          value={currentValue}
+          removeTo={target?.kind === "document" ? DEFAULT_DOCUMENT_ICON : null}
+          offerDefault={target?.kind === "document"}
+          tintClassName={null}
+          onChoose={choose}
+        />
       </PopoverContent>
     </Popover>
   )
 }
 
-export { IconPicker }
+export { IconChooser, IconPicker, resetIconChooserAtom }

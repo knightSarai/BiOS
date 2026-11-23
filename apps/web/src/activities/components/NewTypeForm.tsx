@@ -21,7 +21,7 @@ function NewTypeForm({
   onCancel,
 }: {
   workspaceId: string
-  parent?: { id: string; color: TypeColor }
+  parent?: { id: string; color: TypeColor; icon: string | null }
   onCreated: (type: ActivityTypeRow) => void
   onCancel: () => void
 }) {
@@ -39,6 +39,7 @@ function NewTypeForm({
             await createType.mutateAsync({
               ...newTypeSchema.parse(value),
               parentId: parent?.id ?? null,
+              icon: parent?.icon ?? null,
             })
           )
         } catch (error) {

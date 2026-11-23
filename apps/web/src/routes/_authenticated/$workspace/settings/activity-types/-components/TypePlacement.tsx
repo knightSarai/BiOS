@@ -24,6 +24,7 @@ type PlacedType = {
   id: string
   name: string
   color: TypeColor
+  icon: string | null
   parentId: string | null
   depth: number
 }
@@ -93,7 +94,10 @@ function TypePlacement({
               aria-label={`Parent type: ${parent?.name ?? "No parent"}`}
               className={valueClassName}
             >
-              <TypeIcon color={parent?.color ?? null} />
+              <TypeIcon
+                color={parent?.color ?? null}
+                icon={parent?.icon ?? null}
+              />
               <span
                 className={cn("truncate", !parent && "text-muted-foreground")}
               >
@@ -112,7 +116,7 @@ function TypePlacement({
               params={{ workspace: workspace.slug, typeId: subtype.id }}
               className={valueClassName}
             >
-              <TypeIcon color={subtype.color} />
+              <TypeIcon color={subtype.color} icon={subtype.icon} />
               <span className="truncate">{subtype.name}</span>
             </Link>
           ))}
@@ -133,7 +137,7 @@ function TypePlacement({
               <PopoverContent align="start" className="w-80">
                 <NewTypeForm
                   workspaceId={workspace.id}
-                  parent={{ id: type.id, color: type.color }}
+                  parent={{ id: type.id, color: type.color, icon: type.icon }}
                   onCancel={() => setNewSubtypeOpen(false)}
                   onCreated={(created) => {
                     setNewSubtypeOpen(false)

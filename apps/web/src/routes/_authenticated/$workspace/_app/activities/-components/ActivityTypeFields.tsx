@@ -55,7 +55,7 @@ function TypeControl({
           aria-label={`Type: ${label}`}
           className={className}
         >
-          <TypeIcon color={type?.color ?? null} />
+          <TypeIcon color={type?.color ?? null} icon={type?.icon ?? null} />
           <span
             className={cn("flex-1 truncate", !type && "text-muted-foreground")}
           >

@@ -12,7 +12,13 @@ import type { TypeColor } from "../activity-types"
 import { NewTypeForm } from "./NewTypeForm"
 import { TypeIcon } from "./TypeIcon"
 
-type TypeOption = { id: string; name: string; color: TypeColor; depth?: number }
+type TypeOption = {
+  id: string
+  name: string
+  color: TypeColor
+  icon: string | null
+  depth?: number
+}
 
 type TypeMenuProps = {
   types: TypeOption[]
@@ -55,7 +61,7 @@ function TypeMenu({
     setMenu({ open: false, creating: false })
   }
   const choices = [
-    { id: null, name: noneLabel, color: null, depth: 1 },
+    { id: null, name: noneLabel, color: null, icon: null, depth: 1 },
     ...types,
   ]
 
@@ -86,7 +92,7 @@ function TypeMenu({
                 className={cn(rowClassName, depthPadding[option.depth ?? 1])}
                 onClick={() => pick(option.id)}
               >
-                <TypeIcon color={option.color} />
+                <TypeIcon color={option.color} icon={option.icon} />
                 <span
                   className={
                     option.id === null

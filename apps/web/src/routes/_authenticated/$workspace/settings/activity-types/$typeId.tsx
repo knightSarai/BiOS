@@ -2,7 +2,7 @@ import { useSuspenseQuery } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import { ColorPicker } from "@/activities/components/ColorPicker"
 import { TimerConfigEditor } from "@/activities/components/TimerConfigEditor"
-import { TypeIcon } from "@/activities/components/TypeIcon"
+import { TypeIconPicker } from "@/activities/components/TypeIconPicker"
 import { DEFAULT_TIMER } from "@/activities/timer"
 import { NotFound } from "@/components/common/NotFound"
 import { useUpdateActivityType } from "@/local-db/activity-type-mutations"
@@ -57,7 +57,7 @@ function ActivityTypePage() {
   return (
     <SettingsPage title={type.name}>
       <SettingsSection
-        title="Name and colour"
+        title="Name, icon and colour"
         description={
           activityCount === 1
             ? "1 activity uses this type."
@@ -65,7 +65,12 @@ function ActivityTypePage() {
         }
       >
         <div className="flex flex-wrap items-center gap-3">
-          <TypeIcon color={type.color} className="size-5" />
+          <TypeIconPicker
+            type={type}
+            onChange={(icon) =>
+              updateType.mutate({ id: type.id, changes: { icon } })
+            }
+          />
           <CommitInput
             key={type.name}
             value={type.name}

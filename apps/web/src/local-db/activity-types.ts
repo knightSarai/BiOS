@@ -34,6 +34,7 @@ type NewActivityType = {
   name: string
   color: TypeColor
   parentId?: string | null
+  icon?: string | null
 }
 
 type ActivityTypeChanges = {
@@ -178,7 +179,7 @@ class ActivityTypesRepository {
         parentId,
         name: requireName(type.name, "type"),
         color: type.color,
-        icon: null,
+        icon: type.icon ?? null,
         statusNames: {},
         timer: null,
         createdAt: timestamp,

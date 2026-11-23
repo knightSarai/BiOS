@@ -86,7 +86,7 @@ function FieldPage() {
                 params={{ workspace: workspace.slug, typeId: type.id }}
                 className="flex min-h-8 items-center gap-2 rounded-md border px-2 hover:bg-accent max-md:min-h-11"
               >
-                <TypeIcon color={type.color} />
+                <TypeIcon color={type.color} icon={type.icon} />
                 {type.name}
               </Link>
             ))}

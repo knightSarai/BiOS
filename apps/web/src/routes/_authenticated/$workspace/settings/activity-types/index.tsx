@@ -82,7 +82,11 @@ function ActivityTypesPage() {
                   depthPadding[type.depth]
                 )}
               >
-                <TypeIcon color={type.color} className="size-4" />
+                <TypeIcon
+                  color={type.color}
+                  icon={type.icon}
+                  className="size-4"
+                />
                 <span className="flex-1 truncate font-medium">{type.name}</span>
                 <span className="text-xs text-muted-foreground">
                   {type.fields.length === 1

@@ -86,6 +86,22 @@ describe("ActivityTypesRepository", () => {
     ])
   })
 
+  it("creates a type with an icon, changes it and clears it", async () => {
+    const { types } = await setup()
+    const type = await types.create({
+      name: "Boxing",
+      color: "chart-1",
+      icon: "phosphor:boxing-glove:neutral",
+    })
+    expect((await types.byId(type.id))?.icon).toBe(
+      "phosphor:boxing-glove:neutral"
+    )
+    await types.update(type.id, { icon: "🥊" })
+    expect((await types.byId(type.id))?.icon).toBe("🥊")
+    await types.update(type.id, { icon: null })
+    expect((await types.byId(type.id))?.icon).toBeNull()
+  })
+
   it("requires names for types and fields", async () => {
     const { types, book } = await setupBook()
     await expect(

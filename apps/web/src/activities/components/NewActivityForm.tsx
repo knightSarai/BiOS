@@ -43,7 +43,6 @@ import { activityTypesQuery, areasQuery } from "@/local-db/activity-queries"
 import { goalListQuery } from "@/local-db/goal-queries"
 import { logProblem, type LoggedSession } from "@/local-db/time-entries"
 import { cn } from "@/lib/utils"
-import { StoredIcon } from "@/notebook/components/StoredIcon"
 import { EMPTY, secondsToValue, valueToSeconds } from "../duration"
 import { backToBack, endOf } from "../log-time"
 import { createMoreAtom, type NewActivityRequest } from "../new-activity"
@@ -120,15 +119,7 @@ const selectAll = (event: React.FocusEvent<HTMLInputElement>) =>
   event.currentTarget.select()
 
 function TypeGlyph({ type }: { type: TypeOption | null }) {
-  return type?.icon ? (
-    <StoredIcon
-      value={type.icon}
-      className="size-3.5"
-      fallback={<TypeIcon color={type.color} />}
-    />
-  ) : (
-    <TypeIcon color={type?.color ?? null} />
-  )
+  return <TypeIcon color={type?.color ?? null} icon={type?.icon ?? null} />
 }
 
 type RepeatDraft = {

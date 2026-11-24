@@ -11,6 +11,7 @@ import { MentionsRepository } from "@/local-db/mentions"
 import { indexFolders, pathTo } from "./tree"
 import {
   createDocumentFor,
+  deleteArea,
   documentDetails,
   ensureDailyNote,
   ensureEntityFolder,
@@ -370,5 +371,116 @@ describe("review fixes", () => {
       (folder) => folder.name === "Nov"
     )
     expect(months).toHaveLength(1)
+  })
+})
+
+describe("deleting an area", () => {
+  it("moves its activities and documents to the other area, keeping their order", async () => {
+    const { ctx, health, finance, activityId } = await setup()
+    const secondId = crypto.randomUUID()
+    await ctx.activities.insertMany([
+      {
+        id: secondId,
+        areaId: health.id,
+        title: "Stretch",
+        status: "todo",
+        origin: null,
+      },
+    ])
+    await ctx.activities.insertMany([
+      {
+        id: crypto.randomUUID(),
+        areaId: finance.id,
+        title: "Pay rates",
+        status: "todo",
+        origin: null,
+      },
+    ])
+    const activityFolder = await ensureEntityFolder(ctx, {
+      kind: "activity",
+      id: activityId,
+    })
+    const documentId = await createDocumentFor(ctx, {
+      kind: "area",
+      id: health.id,
+    })
+
+    const result = await deleteArea(ctx, health.id, finance.id)
+
+    expect(result.moved).toBe(2)
+    expect(await ctx.areas.byId(health.id)).toBeNull()
+    const first = await ctx.activities.byId(activityId)
+    const second = await ctx.activities.byId(secondId)
+    expect([first?.areaId, first?.number]).toEqual([finance.id, 2])
+    expect([second?.areaId, second?.number]).toEqual([finance.id, 3])
+    expect((await ctx.areas.byId(finance.id))?.nextNumber).toBe(4)
+    expect(await folderPath(ctx, activityFolder.id)).toEqual([
+      "Areas",
+      "Finance",
+      "Activities",
+      "FIN-2 Book sparring",
+    ])
+    const docs = await entityDocuments(ctx, { kind: "area", id: finance.id })
+    expect(docs.inFolder.map((document) => document.id)).toEqual([documentId])
+    expect(docs.inFolder[0].path).toEqual(["Areas", "Finance", "Health"])
+  })
+
+  it("drops an empty folder and detaches documents that were only attached", async () => {
+    const { ctx, health, finance } = await setup()
+    await ctx.activities.moveAllToArea(health.id, finance.id)
+    await ensureEntityFolder(ctx, { kind: "area", id: health.id })
+    const elsewhere = await ctx.documents.create({ folderId: ROOT_FOLDER_ID })
+    await ctx.attachments.attach(elsewhere, `area:${health.id}`)
+
+    await deleteArea(ctx, health.id, finance.id)
+
+    expect(await ctx.folders.byOwner(`area:${health.id}`)).toBeNull()
+    expect(
+      (await ctx.folders.list()).some((folder) => folder.name === "Health")
+    ).toBe(false)
+    expect(await ctx.attachments.forDocument(elsewhere)).toEqual([])
+    expect((await ctx.documents.byId(elsewhere))?.folderId).toBe(ROOT_FOLDER_ID)
+  })
+
+  it("leaves a folder the user moved where they put it", async () => {
+    const { ctx, health, finance } = await setup()
+    await ctx.activities.moveAllToArea(health.id, finance.id)
+    const documentId = await createDocumentFor(ctx, {
+      kind: "area",
+      id: health.id,
+    })
+    const folder = await ctx.folders.byOwner(`area:${health.id}`)
+    const archive = await ctx.folders.create({ name: "Archive" })
+    await ctx.folders.move(folder!.id, archive.id)
+
+    await deleteArea(ctx, health.id, finance.id)
+
+    expect(await folderPath(ctx, folder!.id)).toEqual(["Archive", "Health"])
+    expect((await ctx.folders.byId(folder!.id))?.ownerKey).toBeNull()
+    expect((await ctx.documents.byId(documentId))?.folderId).toBe(folder!.id)
+  })
+
+  it("won't delete the first area", async () => {
+    const { ctx, health } = await setup()
+    const first = await ctx.areas.ensureDefault("Knight Life")
+    await expect(deleteArea(ctx, first.id, health.id)).rejects.toThrow()
+    expect(await ctx.areas.byId(first.id)).not.toBeNull()
+  })
+})
+
+describe("renaming an area", () => {
+  it("renames its folder too", async () => {
+    const { ctx, health } = await setup()
+    const folder = await ensureEntityFolder(ctx, {
+      kind: "area",
+      id: health.id,
+    })
+    await ctx.areas.update(health.id, { name: "Body", color: "chart-3" })
+    await syncEntityFolder(ctx, { kind: "area", id: health.id })
+    expect(await ctx.areas.byId(health.id)).toMatchObject({
+      name: "Body",
+      color: "chart-3",
+    })
+    expect((await ctx.folders.byId(folder.id))?.name).toBe("Body")
   })
 })

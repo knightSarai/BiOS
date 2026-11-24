@@ -148,6 +148,21 @@ describe("ActivitiesRepository", () => {
     expect(await activities.list({ areaId: health.id })).toHaveLength(1)
   })
 
+  it("leaves a routine's generated steps out of the open count", async () => {
+    const { activities, home } = await setup()
+    const parent = newActivity(home.id, "Guitar practice")
+    await activities.insertMany([
+      parent,
+      { ...newActivity(home.id, "Scales"), parentId: parent.id },
+      {
+        ...newActivity(home.id, "Round 1"),
+        parentId: parent.id,
+        generated: "step",
+      },
+    ])
+    expect((await activities.openCountsByArea()).get(home.id)).toBe(2)
+  })
+
   it("never touches another workspace's activities", async () => {
     const { db, activities, home } = await setup()
     const [created] = await activities.createMany([

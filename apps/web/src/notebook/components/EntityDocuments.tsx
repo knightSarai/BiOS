@@ -385,4 +385,4 @@ function AttachDocumentPopover({
   )
 }
 
-export { EntityDocuments, EntityDocumentsPanel }
+export { AttachDocumentPopover, EntityDocuments, EntityDocumentsPanel }

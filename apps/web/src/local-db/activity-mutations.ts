@@ -23,11 +23,11 @@ import {
   areasRepository,
   routinesRepository,
 } from "./activity-queries"
-import type { NewArea } from "./areas"
+import type { AreaChanges, NewArea } from "./areas"
 import { MissingRoutineError, toSeconds } from "./routines"
 import type { LoggedSession } from "./time-entries"
 import { notebookContext, notebookKeys } from "./notebook-queries"
-import { syncEntityFolder } from "@/notebook/use-cases"
+import { deleteArea, syncEntityFolder } from "@/notebook/use-cases"
 
 const syncActivityFolder = (workspaceId: string, activityId: string) =>
   syncEntityFolder(notebookContext(workspaceId), {
@@ -272,6 +272,37 @@ const useCreateArea = (workspaceId: string) => {
   })
 }
 
+const useUpdateArea = (workspaceId: string) => {
+  const invalidate = useInvalidateActivities(workspaceId)
+  return useMutation({
+    networkMode: "always",
+    mutationFn: async ({
+      id,
+      changes,
+    }: {
+      id: string
+      changes: AreaChanges
+    }) => {
+      await areasRepository(workspaceId).update(id, changes)
+      await syncEntityFolder(notebookContext(workspaceId), {
+        kind: "area",
+        id,
+      })
+    },
+    onSuccess: invalidate,
+  })
+}
+
+const useDeleteArea = (workspaceId: string) => {
+  const invalidate = useInvalidateActivities(workspaceId)
+  return useMutation({
+    networkMode: "always",
+    mutationFn: ({ id, intoAreaId }: { id: string; intoAreaId: string }) =>
+      deleteArea(notebookContext(workspaceId), id, intoAreaId),
+    onSuccess: invalidate,
+  })
+}
+
 const useSetActivityGoal = (workspaceId: string) => {
   const invalidate = useInvalidateActivities(workspaceId)
   return useMutation({
@@ -419,6 +450,8 @@ export {
   useSetActivityTimer,
   useDeleteActivity,
   useCreateArea,
+  useDeleteArea,
+  useUpdateArea,
   useMoveActivityToArea,
   useChangeActivityType,
   useSaveActivityContent,

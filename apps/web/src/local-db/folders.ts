@@ -164,6 +164,16 @@ class FoldersRepository {
     await this.scoped(id).modify({ ...placement, updatedAt: parseUtc(now()) })
   }
 
+  // Its entity is gone, so it becomes an ordinary folder the user owns.
+  async release(id: string) {
+    await this.scoped(id).modify({
+      role: "plain",
+      ownerKey: null,
+      followsOwner: false,
+      updatedAt: parseUtc(now()),
+    })
+  }
+
   async reorder(id: string, sortKey: string) {
     await this.scoped(id).modify({ sortKey, updatedAt: parseUtc(now()) })
   }

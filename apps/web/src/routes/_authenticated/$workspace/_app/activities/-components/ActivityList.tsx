@@ -52,6 +52,8 @@ type ActivityListProps = {
   activities: ActivityRow[]
   // Lists only this area's activities; the rest only appear as dimmed parents.
   areaId: string | null
+  // Steps a routine made for itself; their parent's progress already counts them.
+  showGenerated: boolean
   areas: AreaRow[]
   workspaceId: string
   workspaceSlug: string
@@ -113,6 +115,7 @@ function ActivityListControls({ className }: { className?: string }) {
 function ActivityRows({
   nodes,
   descendantsOf,
+  areaId,
   areasById,
   workspaceId,
   workspaceSlug,
@@ -122,6 +125,7 @@ function ActivityRows({
 }: {
   nodes: TreeNode<ActivityRow>[]
   descendantsOf: (id: string) => ActivityRow[]
+  areaId: string | null
   areasById: Map<string, AreaRow>
   workspaceId: string
   workspaceSlug: string
@@ -205,7 +209,7 @@ function ActivityRows({
                   </span>
                 ) : null}
                 <span className="flex-1" />
-                {area ? (
+                {area && area.id !== areaId ? (
                   <ColorDot
                     title={area.name}
                     color={area.color}
@@ -223,6 +227,7 @@ function ActivityRows({
               <ActivityRows
                 nodes={children}
                 descendantsOf={descendantsOf}
+                areaId={areaId}
                 areasById={areasById}
                 workspaceId={workspaceId}
                 workspaceSlug={workspaceSlug}
@@ -243,6 +248,7 @@ function ActivityRows({
 function ActivityList({
   activities,
   areaId,
+  showGenerated,
   areas,
   workspaceId,
   workspaceSlug,
@@ -262,6 +268,7 @@ function ActivityList({
     .map((group) => {
       const isMember = (activity: ActivityRow) =>
         (areaId === null || activity.areaId === areaId) &&
+        (showGenerated || activity.generated === null) &&
         isListed(activity, statuses) &&
         groupOf(activity) === group
       return {
@@ -328,6 +335,7 @@ function ActivityList({
                 <ActivityRows
                   nodes={tree}
                   descendantsOf={descendantsOf}
+                  areaId={areaId}
                   areasById={areasById}
                   workspaceId={workspaceId}
                   workspaceSlug={workspaceSlug}

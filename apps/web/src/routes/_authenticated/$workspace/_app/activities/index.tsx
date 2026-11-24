@@ -73,6 +73,7 @@ function ActivitiesPage() {
               <ActivityList
                 activities={activities}
                 areaId={null}
+                showGenerated
                 areas={areas}
                 workspaceId={workspace.id}
                 workspaceSlug={workspace.slug}

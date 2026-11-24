@@ -478,8 +478,74 @@ const listOwners = async (ctx: NotebookContext): Promise<OwnerSummary[]> => {
   ]
 }
 
+const isEmptyFolder = async (ctx: NotebookContext, folderId: string) => {
+  const [children, documents] = await Promise.all([
+    ctx.folders.children(folderId),
+    ctx.documents.inFolders([folderId]),
+  ])
+  return children.length === 0 && documents.length === 0
+}
+
+// Activities and the area's own documents go to the other area; documents only attached
+// to it stay where they are. A folder the user moved or renamed stays where they put it,
+// so nothing written is lost.
+const deleteArea = async (
+  ctx: NotebookContext,
+  areaId: string,
+  intoAreaId: string
+) => {
+  if (areaId === intoAreaId) throw new Error("Pick another area to move to.")
+  const [area, into] = await Promise.all([
+    ctx.areas.byId(areaId),
+    ctx.areas.byId(intoAreaId),
+  ])
+  if (!area || !into) throw new Error("That area no longer exists.")
+  if (ctx.areas.isDefault(areaId)) {
+    throw new Error("The first area can't be deleted.")
+  }
+  const ownerKey = ownerKeyOf({ kind: "area", id: areaId })
+  const folder = await ctx.folders.byOwner(ownerKey)
+  const intoFolder = folder
+    ? await ensureEntityFolder(ctx, { kind: "area", id: intoAreaId })
+    : null
+  if (
+    folder &&
+    intoFolder &&
+    subtreeFolderIds(folder.id, await ctx.folders.list()).includes(
+      intoFolder.id
+    )
+  ) {
+    throw new Error(
+      `${into.name}'s folder is inside ${area.name}'s folder. Move it out in the Notebook first.`
+    )
+  }
+  const moved = await ctx.activities.moveAllToArea(areaId, intoAreaId)
+  for (const id of moved) {
+    await syncEntityFolder(ctx, { kind: "activity", id })
+  }
+  if (folder && intoFolder) {
+    for (const child of await ctx.folders.children(folder.id)) {
+      if (child.role !== "area-activities") continue
+      if (await isEmptyFolder(ctx, child.id)) await ctx.folders.delete(child.id)
+      else await ctx.folders.release(child.id)
+    }
+    if (await isEmptyFolder(ctx, folder.id)) {
+      await ctx.folders.delete(folder.id)
+    } else {
+      await ctx.folders.release(folder.id)
+      if (folder.followsOwner) await ctx.folders.move(folder.id, intoFolder.id)
+    }
+  }
+  for (const attachment of await ctx.attachments.forOwner(ownerKey)) {
+    await ctx.attachments.detach(attachment.documentId, ownerKey)
+  }
+  await ctx.areas.delete(areaId)
+  return { moved: moved.length, into }
+}
+
 export {
   createDocumentFor,
+  deleteArea,
   describeOwner,
   describeOwnerKey,
   documentDetails,

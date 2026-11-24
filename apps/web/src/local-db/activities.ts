@@ -305,7 +305,7 @@ class ActivitiesRepository {
       .where("workspaceId")
       .equals(this.ctx.workspaceId)
       .each((row) => {
-        if (isOpenStatus(row.status)) {
+        if (isOpenStatus(row.status) && row.generated === null) {
           counts.set(row.areaId, (counts.get(row.areaId) ?? 0) + 1)
         }
       })
@@ -762,6 +762,40 @@ class ActivitiesRepository {
           number: area.nextNumber,
           updatedAt: parseUtc(now()),
         })
+      }
+    )
+  }
+
+  // Numbered in their old order, so HOME-3 comes before HOME-14 in the new area too.
+  moveAllToArea(fromAreaId: string, toAreaId: string) {
+    return this.db.transaction(
+      "rw",
+      this.db.areas,
+      this.db.activities,
+      async () => {
+        const into = await this.db.areas.get(toAreaId)
+        if (into?.workspaceId !== this.ctx.workspaceId) {
+          throw new Error("The area to move into doesn't exist.")
+        }
+        const rows = (
+          await this.db.activities
+            .where("workspaceId")
+            .equals(this.ctx.workspaceId)
+            .filter((row) => row.areaId === fromAreaId)
+            .toArray()
+        ).sort((a, b) => a.number - b.number)
+        const timestamp = parseUtc(now())
+        for (const [index, row] of rows.entries()) {
+          await this.db.activities.update(row.id, {
+            areaId: into.id,
+            number: into.nextNumber + index,
+            updatedAt: timestamp,
+          })
+        }
+        await this.db.areas.update(into.id, {
+          nextNumber: into.nextNumber + rows.length,
+        })
+        return rows.map((row) => row.id)
       }
     )
   }

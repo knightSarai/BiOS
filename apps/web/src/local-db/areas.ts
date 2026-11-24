@@ -16,7 +16,11 @@ type NewArea = {
   color: AreaColor
 }
 
+type AreaChanges = Partial<Pick<NewArea, "name" | "color">>
+
 class AreaKeyTakenError extends Error {}
+
+const defaultAreaIdFor = (workspaceId: string) => `default-${workspaceId}`
 
 const defaultAreaKey = (workspaceName: string) => {
   const key = areaKeyFromName(workspaceName)
@@ -30,7 +34,11 @@ class AreasRepository {
   ) {}
 
   private get defaultAreaId() {
-    return `default-${this.ctx.workspaceId}`
+    return defaultAreaIdFor(this.ctx.workspaceId)
+  }
+
+  isDefault(id: string) {
+    return id === this.defaultAreaId
   }
 
   async list() {
@@ -88,7 +96,29 @@ class AreasRepository {
       return row
     })
   }
+
+  async update(id: string, changes: AreaChanges) {
+    const name = changes.name?.trim()
+    if (name === "") throw new Error("Give the area a name.")
+    await this.db.areas
+      .where("id")
+      .equals(id)
+      .filter((row) => row.workspaceId === this.ctx.workspaceId)
+      .modify({
+        ...(name === undefined ? {} : { name }),
+        ...(changes.color === undefined ? {} : { color: changes.color }),
+      })
+  }
+
+  async delete(id: string) {
+    if (this.isDefault(id)) throw new Error("The first area can't be deleted.")
+    await this.db.areas
+      .where("id")
+      .equals(id)
+      .filter((row) => row.workspaceId === this.ctx.workspaceId)
+      .delete()
+  }
 }
 
-export { AreaKeyTakenError, AreasRepository }
-export type { AreasContext, NewArea }
+export { AreaKeyTakenError, AreasRepository, defaultAreaIdFor }
+export type { AreaChanges, AreasContext, NewArea }
